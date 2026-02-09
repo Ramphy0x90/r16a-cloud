@@ -1,22 +1,23 @@
 package com.r16a.r16a_cloud.security;
 
-import com.r16a.r16a_cloud.security.auth.jwt.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.time.Duration;
 import java.util.List;
 
 @Configuration
@@ -24,18 +25,41 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final OidcJwtAuthenticationConverter oidcJwtAuthenticationConverter;
+
+    @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}")
+    private String jwkSetUri;
 
     /**
-     * Override authentication manager to avoid having temp passwords being created.
-     * The only way of authentication is with the IdP.
-     *
-     * @param config Authentication configuration
-     * @return new authentication manager
+     * Custom decoder to specify a bigger timeout. My IdP (Authentik)
+     * is a bit slow, to avoid false unauthorized responses from the
+     * backend when the frontend invokes any API, this is required...
+     * @return JwtDecoder
      */
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) {
-        return config.getAuthenticationManager();
+    public JwtDecoder jwtDecoder() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(10));
+        factory.setReadTimeout(Duration.ofSeconds(10));
+
+        RestTemplate restTemplate = new RestTemplate(factory);
+
+        return NimbusJwtDecoder.withJwkSetUri(jwkSetUri)
+                .restOperations(restTemplate)
+                .build();
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(oidcJwtAuthenticationConverter))
+                )
+                .build();
     }
 
     @Bean
@@ -49,48 +73,5 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
-    }
-
-    /**
-     * Security filter chain for authentication ONLY. This exists because when the user
-     * is authenticated, there is a filter to check JWT token. The authentication is
-     * handle with OIDC using Authentik as IdP.
-     *
-     * @param http http
-     * @return security filter chain for auth routes
-     */
-    @Bean
-    @Order(1)
-    public SecurityFilterChain authFilterChain(HttpSecurity http) {
-        return http
-                .securityMatcher("/api/auth/**")
-                .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                .build();
-    }
-
-    /**
-     * Security filter chain used ONLY for app routes. If user is not requesting
-     * an auth route, that means that a JWT token should be present in the header,
-     * in that case, the JWT filter will check the validity of that token (if exists)
-     *
-     * @param http http
-     * @param authenticationManager custom empty authentication manager
-     * @return security filter chain for app routes
-     */
-    @Bean
-    @Order(2)
-    public SecurityFilterChain appFilterChain(HttpSecurity http, AuthenticationManager authenticationManager) {
-        return http
-                .securityMatcher("/api/**")
-                .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
-                .authenticationManager(authenticationManager)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .build();
     }
 }
