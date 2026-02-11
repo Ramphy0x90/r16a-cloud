@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: r16a-cloud
+  namespace: r16a-prod
+  labels:
+    app: r16a-cloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: r16a-cloud
+  template:
+    metadata:
+      labels:
+        app: r16a-cloud
+    spec:
+      imagePullSecrets:
+        - name: registry-r16a-cloud
+      containers:
+        - name: r16a-cloud
+          image: registry.r16a.cloud/r16a-cloud:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: r16a-cloud-secret
+                  key: DB_URL
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: r16a-cloud-secret
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: r16a-cloud-secret
+                  key: DB_PASSWORD
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: r16a-cloud-secret
+                  key: REDIS_HOST
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: r16a-cloud-secret
+                  key: JWT_SECRET
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 5
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: r16a-cloud-uploads
