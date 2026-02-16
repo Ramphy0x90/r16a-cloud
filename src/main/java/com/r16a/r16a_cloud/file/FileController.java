@@ -31,17 +31,19 @@ public class FileController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<FileResponse>> listFiles(
+    public ResponseEntity<Page<FileResponse>> getFiles(
             @RequestParam Long ownerId,
             @RequestParam(required = false) Long parentId,
-            Pageable pageable) {
-        return ResponseEntity.ok(fileService.listFiles(ownerId, parentId, pageable));
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok(fileService.getFiles(ownerId, parentId, pageable));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<FileResponse> updateFile(
             @PathVariable Long id,
-            @Valid @RequestBody UpdateFileRequest request) {
+            @Valid @RequestBody UpdateFileRequest request
+    ) {
         return ResponseEntity.ok(fileService.updateFile(id, request));
     }
 

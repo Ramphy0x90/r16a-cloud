@@ -9,10 +9,9 @@ import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -24,6 +23,26 @@ public class FileService {
 
     private final FileRepository fileRepository;
     private final UserRepository userRepository;
+
+    public FileResponse getFileById(Long id) {
+        return FileResponse.from(findFileOrThrow(id));
+    }
+
+    public Page<FileResponse> getFiles(Long ownerId, Long parentId, Pageable pageable) {
+        if (!userRepository.existsById(ownerId)) {
+            throw new ResourceNotFoundException("User", "id", ownerId);
+        }
+
+        Page<File> files;
+        if (parentId != null) {
+            findFileOrThrow(parentId);
+            files = fileRepository.findByParentIdAndOwnerId(parentId, ownerId, pageable);
+        } else {
+            files = fileRepository.findByParentIsNullAndOwnerId(ownerId, pageable);
+        }
+
+        return files.map(FileResponse::from);
+    }
 
     public FileResponse createFile(CreateFileRequest request) {
         User owner = userRepository.findById(request.ownerId())
@@ -45,9 +64,7 @@ public class FileService {
                 .name(request.name())
                 .description(request.description())
                 .fsPath(fsPath)
-                .directory(request.directory())
-                .size(request.directory() ? null : request.size())
-                .mimeType(request.directory() ? null : request.mimeType())
+                .isDirectory(request.isDirectory())
                 .visibility(request.visibility() != null ? request.visibility() : Visibility.PRIVATE)
                 .parent(parent)
                 .owner(owner)
@@ -55,26 +72,6 @@ public class FileService {
                 .build();
 
         return FileResponse.from(fileRepository.save(file));
-    }
-
-    public FileResponse getFileById(Long id) {
-        return FileResponse.from(findFileOrThrow(id));
-    }
-
-    public Page<FileResponse> listFiles(Long ownerId, Long parentId, Pageable pageable) {
-        if (!userRepository.existsById(ownerId)) {
-            throw new ResourceNotFoundException("User", "id", ownerId);
-        }
-
-        Page<File> files;
-        if (parentId != null) {
-            findFileOrThrow(parentId);
-            files = fileRepository.findByParentIdAndOwnerId(parentId, ownerId, pageable);
-        } else {
-            files = fileRepository.findByParentIsNullAndOwnerId(ownerId, pageable);
-        }
-
-        return files.map(FileResponse::from);
     }
 
     public FileResponse updateFile(Long id, UpdateFileRequest request) {

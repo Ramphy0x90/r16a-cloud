@@ -32,11 +32,7 @@ public class File {
     private String fsPath;
 
     @Builder.Default
-    private boolean directory = false;
-
-    private Long size;
-
-    private String mimeType;
+    private boolean isDirectory = false;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
