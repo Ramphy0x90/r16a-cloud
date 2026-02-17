@@ -18,26 +18,6 @@ public class UserService {
 
     private final UserRepository userRepository;
 
-    public UserResponse createUser(CreateUserRequest request) {
-        if (userRepository.existsByUsername(request.username())) {
-            throw new ResourceAlreadyExistsException("User", "username", request.username());
-        }
-
-        if (userRepository.existsByEmail(request.email())) {
-            throw new ResourceAlreadyExistsException("User", "email", request.email());
-        }
-
-        User user = User.builder()
-                .username(request.username())
-                .email(request.email())
-                .displayName(request.displayName())
-                .password(request.password())
-                .role(request.role() != null ? request.role() : Role.USER)
-                .build();
-
-        return UserResponse.from(userRepository.save(user));
-    }
-
     public UserResponse getUserById(Long id) {
         return UserResponse.from(findUserOrThrow(id));
     }
@@ -50,6 +30,20 @@ public class UserService {
 
     public Page<UserResponse> getAllUsers(Pageable pageable) {
         return userRepository.findAll(pageable).map(UserResponse::from);
+    }
+
+    public UserResponse createUser(CreateUserRequest request) {
+        if (userRepository.existsByUsername(request.username())) {
+            throw new ResourceAlreadyExistsException("User", "username", request.username());
+        }
+
+        User user = User.builder()
+                .username(request.username())
+                .displayName(request.displayName())
+                .role(request.role() != null ? request.role() : Role.USER)
+                .build();
+
+        return UserResponse.from(userRepository.save(user));
     }
 
     public UserResponse updateUser(Long id, UpdateUserRequest request) {

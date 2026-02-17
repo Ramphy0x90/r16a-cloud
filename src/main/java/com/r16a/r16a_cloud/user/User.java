@@ -23,7 +23,7 @@ public class User {
     @Column(unique = true)
     private String externalId;
 
-    @Column(nullable = false, unique = true)
+    @Column(unique = true)
     private String email;
 
     @Column(nullable = false, unique = true)
@@ -31,8 +31,6 @@ public class User {
 
     @Column(nullable = false)
     private String displayName;
-
-    private String password;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
