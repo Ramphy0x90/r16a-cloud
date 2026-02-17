@@ -142,10 +142,12 @@ public class FileService {
         if (userIds == null || userIds.isEmpty()) {
             return new HashSet<>();
         }
+
         Set<User> users = new HashSet<>(userRepository.findAllById(userIds));
         if (users.size() != userIds.size()) {
             throw new ResourceNotFoundException("User", "ids", userIds);
         }
+
         return users;
     }
 }
