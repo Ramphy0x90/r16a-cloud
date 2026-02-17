@@ -12,9 +12,7 @@ public record CreateFileRequest(
         @Size(max = 1000) String description,
         @NotNull Long ownerId,
         Long parentId,
-        boolean directory,
-        Long size,
-        String mimeType,
+        boolean isDirectory,
         Visibility visibility,
         Set<Long> sharedWithIds
 ) {
