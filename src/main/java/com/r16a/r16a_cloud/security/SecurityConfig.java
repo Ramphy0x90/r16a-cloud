@@ -33,7 +33,7 @@ public class SecurityConfig {
     /**
      * Custom decoder to specify a bigger timeout. My IdP (Authentik)
      * is a bit slow, to avoid false unauthorized responses from the
-     * backend when the frontend invokes any API, this is required...
+     * backend when the frontend invokes any API, this is required....
      * @return JwtDecoder
      */
     @Bean
