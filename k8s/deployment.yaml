@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: r16a-cloud
-  namespace: r16a-prod
+  namespace: r16a-cloud
   labels:
     app: r16a-cloud
 spec:
