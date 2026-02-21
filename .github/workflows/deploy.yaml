@@ -33,7 +33,11 @@ jobs:
                   docker push registry.r16a.cloud/r16a-cloud:${{ github.sha }}
                   docker push registry.r16a.cloud/r16a-cloud:latest
 
-            - name: Deploy in kubernetes
+            - name: Update deployment image in manifest
               run: |
-                  kubectl set image deployment/r16a-cloud r16a-cloud=registry.r16a.cloud/r16a-cloud:${{ github.sha }} -n r16a-cloud
+                  sed -i "s|image: registry.r16a.cloud/r16a-cloud:.*|image: registry.r16a.cloud/r16a-cloud:${{ github.sha }}|" k8s/deployment.yaml
+
+            - name: Apply Kubernetes manifests
+              run: |
+                  kubectl apply -f k8s/  # applies deployment, service, ingress, pvc
                   kubectl rollout status deployment/r16a-cloud -n r16a-cloud --timeout=120s
