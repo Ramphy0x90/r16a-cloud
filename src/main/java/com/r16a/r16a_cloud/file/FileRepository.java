@@ -6,21 +6,22 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.UUID;
 
 @Repository
-public interface FileRepository extends JpaRepository<File, Long> {
+public interface FileRepository extends JpaRepository<File, UUID> {
 
-    Page<File> findByParentIdAndOwnerId(Long parentId, Long ownerId, Pageable pageable);
+    Page<File> findByParentIdAndOwnerId(UUID parentId, UUID ownerId, Pageable pageable);
 
-    Page<File> findByParentIsNullAndOwnerId(Long ownerId, Pageable pageable);
+    Page<File> findByParentIsNullAndOwnerId(UUID ownerId, Pageable pageable);
 
-    boolean existsByNameAndParentIdAndOwnerId(String name, Long parentId, Long ownerId);
+    boolean existsByNameAndParentIdAndOwnerId(String name, UUID parentId, UUID ownerId);
 
-    boolean existsByNameAndParentIsNullAndOwnerId(String name, Long ownerId);
+    boolean existsByNameAndParentIsNullAndOwnerId(String name, UUID ownerId);
 
-    boolean existsByNameAndParentIdAndOwnerIdAndIdNot(String name, Long parentId, Long ownerId, Long id);
+    boolean existsByNameAndParentIdAndOwnerIdAndIdNot(String name, UUID parentId, UUID ownerId, UUID id);
 
-    boolean existsByNameAndParentIsNullAndOwnerIdAndIdNot(String name, Long ownerId, Long id);
+    boolean existsByNameAndParentIsNullAndOwnerIdAndIdNot(String name, UUID ownerId, UUID id);
 
-    List<File> findByParentId(Long parentId);
+    List<File> findByParentId(UUID parentId);
 }

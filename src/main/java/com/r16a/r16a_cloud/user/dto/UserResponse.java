@@ -4,9 +4,10 @@ import com.r16a.r16a_cloud.user.Role;
 import com.r16a.r16a_cloud.user.User;
 
 import java.time.Instant;
+import java.util.UUID;
 
 public record UserResponse(
-        Long id,
+        UUID id,
         String username,
         String email,
         String displayName,

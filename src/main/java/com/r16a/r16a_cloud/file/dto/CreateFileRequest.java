@@ -6,14 +6,15 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.Set;
+import java.util.UUID;
 
 public record CreateFileRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 1000) String description,
-        @NotNull Long ownerId,
-        Long parentId,
+        @NotNull UUID ownerId,
+        UUID parentId,
         boolean isDirectory,
         Visibility visibility,
-        Set<Long> sharedWithIds
+        Set<UUID> sharedWithIds
 ) {
 }

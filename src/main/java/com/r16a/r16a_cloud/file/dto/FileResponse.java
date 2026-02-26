@@ -6,18 +6,19 @@ import com.r16a.r16a_cloud.user.User;
 
 import java.time.Instant;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public record FileResponse(
-        Long id,
+        UUID id,
         String name,
         String description,
         String fsPath,
         boolean isDirectory,
         Visibility visibility,
-        Long parentId,
-        Long ownerId,
-        Set<Long> sharedWithIds,
+        UUID parentId,
+        UUID ownerId,
+        Set<UUID> sharedWithIds,
         Instant createdAt,
         Instant updatedAt
 ) {

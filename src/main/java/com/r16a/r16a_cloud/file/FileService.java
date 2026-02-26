@@ -29,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -53,11 +54,11 @@ public class FileService {
         }
     }
 
-    public FileResponse getFileById(Long id) {
+    public FileResponse getFileById(UUID id) {
         return FileResponse.from(findFileOrThrow(id));
     }
 
-    public Page<FileResponse> getFiles(Long ownerId, Long parentId, Pageable pageable) {
+    public Page<FileResponse> getFiles(UUID ownerId, UUID parentId, Pageable pageable) {
         if (!userRepository.existsById(ownerId)) {
             throw new ResourceNotFoundException("User", "id", ownerId);
         }
@@ -106,12 +107,12 @@ public class FileService {
 
     @Transactional
     public FileResponse uploadFile(
-            Long ownerId,
-            Long parentId,
+            UUID ownerId,
+            UUID parentId,
             MultipartFile upload,
             String description,
             Visibility visibility,
-            Set<Long> sharedWithIds
+            Set<UUID> sharedWithIds
     ) {
         User owner = userRepository.findById(ownerId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", ownerId));
@@ -144,7 +145,7 @@ public class FileService {
     }
 
     @Transactional
-    public FileResponse updateFile(Long id, UpdateFileRequest request) {
+    public FileResponse updateFile(UUID id, UpdateFileRequest request) {
         File file = findFileOrThrow(id);
         String targetName = request.name() != null ? request.name() : file.getName();
 
@@ -202,18 +203,18 @@ public class FileService {
     }
 
     @Transactional
-    public void deleteFile(Long id) {
+    public void deleteFile(UUID id) {
         File file = findFileOrThrow(id);
         deleteFsEntry(Path.of(file.getFsPath()));
         deleteFromDbRecursively(file);
     }
 
-    private File findFileOrThrow(Long id) {
+    private File findFileOrThrow(UUID id) {
         return fileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("File", "id", id));
     }
 
-    private File resolveParentForOwner(Long parentId, Long ownerId) {
+    private File resolveParentForOwner(UUID parentId, UUID ownerId) {
         if (parentId == null) {
             return null;
         }
@@ -230,7 +231,7 @@ public class FileService {
         return parent;
     }
 
-    private void checkDuplicateNameForCreate(String name, File parent, Long ownerId) {
+    private void checkDuplicateNameForCreate(String name, File parent, UUID ownerId) {
         boolean exists = parent != null
                 ? fileRepository.existsByNameAndParentIdAndOwnerId(name, parent.getId(), ownerId)
                 : fileRepository.existsByNameAndParentIsNullAndOwnerId(name, ownerId);
@@ -240,7 +241,7 @@ public class FileService {
         }
     }
 
-    private void checkDuplicateNameForUpdate(String name, File parent, Long ownerId, Long fileId) {
+    private void checkDuplicateNameForUpdate(String name, File parent, UUID ownerId, UUID fileId) {
         boolean exists = parent != null
                 ? fileRepository.existsByNameAndParentIdAndOwnerIdAndIdNot(name, parent.getId(), ownerId, fileId)
                 : fileRepository.existsByNameAndParentIsNullAndOwnerIdAndIdNot(name, ownerId, fileId);
@@ -250,7 +251,7 @@ public class FileService {
         }
     }
 
-    private Set<User> resolveUsers(Set<Long> userIds) {
+    private Set<User> resolveUsers(Set<UUID> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return new HashSet<>();
         }
@@ -263,7 +264,7 @@ public class FileService {
         return users;
     }
 
-    private Path resolveTargetPath(Long ownerId, File parent, String name) {
+    private Path resolveTargetPath(UUID ownerId, File parent, String name) {
         Path ownerRoot = resolveOwnerRoot(ownerId);
         Path target = parent != null
                 ? Path.of(parent.getFsPath()).resolve(name).normalize()
@@ -276,7 +277,7 @@ public class FileService {
         return target;
     }
 
-    private Path resolveOwnerRoot(Long ownerId) {
+    private Path resolveOwnerRoot(UUID ownerId) {
         Path ownerRoot = Path.of(uploadRootPath).resolve("user_" + ownerId).normalize();
 
         try {
@@ -414,7 +415,7 @@ public class FileService {
             if (cursor.getId().equals(file.getId())) {
                 throw new StorageException("Cannot move a directory into one of its descendants.");
             }
-            
+
             cursor = cursor.getParent();
         }
     }

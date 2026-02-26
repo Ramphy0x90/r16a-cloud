@@ -4,12 +4,13 @@ import com.r16a.r16a_cloud.file.Visibility;
 import jakarta.validation.constraints.Size;
 
 import java.util.Set;
+import java.util.UUID;
 
 public record UpdateFileRequest(
         @Size(max = 255) String name,
         @Size(max = 1000) String description,
-        Long parentId,
+        UUID parentId,
         Visibility visibility,
-        Set<Long> sharedWithIds
+        Set<UUID> sharedWithIds
 ) {
 }

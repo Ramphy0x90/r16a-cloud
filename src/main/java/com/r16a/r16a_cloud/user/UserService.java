@@ -11,6 +11,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -18,7 +20,7 @@ public class UserService {
 
     private final UserRepository userRepository;
 
-    public UserResponse getUserById(Long id) {
+    public UserResponse getUserById(UUID id) {
         return UserResponse.from(findUserOrThrow(id));
     }
 
@@ -46,7 +48,7 @@ public class UserService {
         return UserResponse.from(userRepository.save(user));
     }
 
-    public UserResponse updateUser(Long id, UpdateUserRequest request) {
+    public UserResponse updateUser(UUID id, UpdateUserRequest request) {
         User user = findUserOrThrow(id);
 
         if (request.email() != null) {
@@ -67,11 +69,11 @@ public class UserService {
         return UserResponse.from(userRepository.save(user));
     }
 
-    public void deleteUser(Long id) {
+    public void deleteUser(UUID id) {
         userRepository.delete(findUserOrThrow(id));
     }
 
-    private User findUserOrThrow(Long id) {
+    private User findUserOrThrow(UUID id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
     }

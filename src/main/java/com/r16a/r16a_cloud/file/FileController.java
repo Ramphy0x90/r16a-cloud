@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Set;
+import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -31,12 +32,12 @@ public class FileController {
 
     @PostMapping("/upload")
     public ResponseEntity<FileResponse> uploadFile(
-            @RequestParam Long ownerId,
-            @RequestParam(required = false) Long parentId,
+            @RequestParam UUID ownerId,
+            @RequestParam(required = false) UUID parentId,
             @RequestParam("file") MultipartFile file,
             @RequestParam(required = false) String description,
             @RequestParam(required = false) Visibility visibility,
-            @RequestParam(required = false) Set<Long> sharedWithIds
+            @RequestParam(required = false) Set<UUID> sharedWithIds
     ) {
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 fileService.uploadFile(ownerId, parentId, file, description, visibility, sharedWithIds)
@@ -44,14 +45,14 @@ public class FileController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<FileResponse> getFile(@PathVariable Long id) {
+    public ResponseEntity<FileResponse> getFile(@PathVariable UUID id) {
         return ResponseEntity.ok(fileService.getFileById(id));
     }
 
     @GetMapping
     public ResponseEntity<Page<FileResponse>> getFiles(
-            @RequestParam Long ownerId,
-            @RequestParam(required = false) Long parentId,
+            @RequestParam UUID ownerId,
+            @RequestParam(required = false) UUID parentId,
             Pageable pageable
     ) {
         return ResponseEntity.ok(fileService.getFiles(ownerId, parentId, pageable));
@@ -59,14 +60,14 @@ public class FileController {
 
     @PutMapping("/{id}")
     public ResponseEntity<FileResponse> updateFile(
-            @PathVariable Long id,
+            @PathVariable UUID id,
             @Valid @RequestBody UpdateFileRequest request
     ) {
         return ResponseEntity.ok(fileService.updateFile(id, request));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteFile(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteFile(@PathVariable UUID id) {
         fileService.deleteFile(id);
         return ResponseEntity.noContent().build();
     }
