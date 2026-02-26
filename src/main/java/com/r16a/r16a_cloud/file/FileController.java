@@ -10,7 +10,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Set;
 
 @Slf4j
 @RestController
@@ -23,6 +27,20 @@ public class FileController {
     @PostMapping
     public ResponseEntity<FileResponse> createFile(@Valid @RequestBody CreateFileRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(fileService.createFile(request));
+    }
+
+    @PostMapping("/upload")
+    public ResponseEntity<FileResponse> uploadFile(
+            @RequestParam Long ownerId,
+            @RequestParam(required = false) Long parentId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) Visibility visibility,
+            @RequestParam(required = false) Set<Long> sharedWithIds
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                fileService.uploadFile(ownerId, parentId, file, description, visibility, sharedWithIds)
+        );
     }
 
     @GetMapping("/{id}")

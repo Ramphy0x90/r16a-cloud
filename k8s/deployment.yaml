@@ -23,6 +23,8 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            - name: UPLOAD_PATH
+              value: /app/uploads
             - name: DB_URL
               valueFrom:
                 secretKeyRef:

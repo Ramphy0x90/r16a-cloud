@@ -31,8 +31,13 @@ public class File {
     @Column(nullable = false)
     private String fsPath;
 
+    @Column(nullable = false)
     @Builder.Default
     private boolean isDirectory = false;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private long sizeBytes = 0L;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
