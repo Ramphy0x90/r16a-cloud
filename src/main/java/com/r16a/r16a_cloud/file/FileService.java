@@ -20,16 +20,21 @@ import org.springframework.web.multipart.MultipartFile;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Slf4j
 @Service
@@ -207,6 +212,38 @@ public class FileService {
         File file = findFileOrThrow(id);
         deleteFsEntry(Path.of(file.getFsPath()));
         deleteFromDbRecursively(file);
+    }
+
+    public DownloadPayload downloadSingle(UUID id) {
+        File file = findFileOrThrow(id);
+        if (!file.isDirectory()) {
+            return buildSingleFilePayload(file);
+        }
+
+        byte[] content = zipFiles(List.of(file));
+        return new DownloadPayload(
+                file.getName() + ".zip",
+                "application/zip",
+                content
+        );
+    }
+
+    public DownloadPayload downloadMultiple(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new StorageException("At least one file id is required for download.");
+        }
+
+        List<File> files = ids.stream().map(this::findFileOrThrow).toList();
+        if (files.size() == 1 && !files.get(0).isDirectory()) {
+            return buildSingleFilePayload(files.get(0));
+        }
+
+        byte[] content = zipFiles(files);
+        return new DownloadPayload(
+                "download_" + Instant.now().toEpochMilli() + ".zip",
+                "application/zip",
+                content
+        );
     }
 
     private File findFileOrThrow(UUID id) {
@@ -418,5 +455,88 @@ public class FileService {
 
             cursor = cursor.getParent();
         }
+    }
+
+    private DownloadPayload buildSingleFilePayload(File file) {
+        Path path = Path.of(file.getFsPath());
+
+        try {
+            if (!Files.exists(path) || Files.isDirectory(path)) {
+                throw new StorageException("File content is unavailable: " + file.getName());
+            }
+
+            byte[] content = Files.readAllBytes(path);
+            String contentType = Files.probeContentType(path);
+            if (contentType == null || contentType.isBlank()) {
+                contentType = "application/octet-stream";
+            }
+
+            return new DownloadPayload(file.getName(), contentType, content);
+        } catch (IOException ex) {
+            throw new StorageException("Failed to read file for download: " + file.getName(), ex);
+        }
+    }
+
+    private byte[] zipFiles(List<File> files) {
+        try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+             ZipOutputStream zipOut = new ZipOutputStream(byteOut)) {
+            Set<String> usedRootNames = new LinkedHashSet<>();
+            for (File file : files) {
+                Path source = Path.of(file.getFsPath());
+                if (!Files.exists(source)) {
+                    throw new StorageException("Source path not found for download: " + source);
+                }
+
+                String rootName = uniqueRootName(file.getName(), usedRootNames);
+                if (Files.isDirectory(source)) {
+                    zipDirectory(zipOut, source, rootName);
+                } else {
+                    zipRegularFile(zipOut, source, rootName);
+                }
+            }
+
+            zipOut.finish();
+            return byteOut.toByteArray();
+        } catch (IOException ex) {
+            throw new StorageException("Failed to build zip for download.", ex);
+        }
+    }
+
+    private void zipDirectory(ZipOutputStream zipOut, Path directoryPath, String rootName) throws IOException {
+        try (var stream = Files.walk(directoryPath)) {
+            for (Path path : (Iterable<Path>) stream::iterator) {
+                if (path.equals(directoryPath)) {
+                    continue;
+                }
+
+                Path relativePath = directoryPath.relativize(path);
+                String entryName = rootName + "/" + relativePath.toString().replace('\\', '/');
+
+                if (Files.isDirectory(path)) {
+                    zipOut.putNextEntry(new ZipEntry(entryName + "/"));
+                    zipOut.closeEntry();
+                } else {
+                    zipRegularFile(zipOut, path, entryName);
+                }
+            }
+        }
+    }
+
+    private void zipRegularFile(ZipOutputStream zipOut, Path path, String entryName) throws IOException {
+        zipOut.putNextEntry(new ZipEntry(entryName));
+        Files.copy(path, zipOut);
+        zipOut.closeEntry();
+    }
+
+    private String uniqueRootName(String baseName, Set<String> usedRootNames) {
+        String candidate = baseName;
+        int index = 1;
+        while (!usedRootNames.add(candidate)) {
+            candidate = baseName + "_" + index++;
+        }
+        return candidate;
+    }
+
+    public record DownloadPayload(String fileName, String contentType, byte[] content) {
     }
 }

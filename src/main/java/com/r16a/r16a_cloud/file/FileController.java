@@ -1,11 +1,14 @@
 package com.r16a.r16a_cloud.file;
 
 import com.r16a.r16a_cloud.file.dto.CreateFileRequest;
+import com.r16a.r16a_cloud.file.dto.DownloadFilesRequest;
 import com.r16a.r16a_cloud.file.dto.FileResponse;
 import com.r16a.r16a_cloud.file.dto.UpdateFileRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.UUID;
 
@@ -70,5 +74,30 @@ public class FileController {
     public ResponseEntity<Void> deleteFile(@PathVariable UUID id) {
         fileService.deleteFile(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<byte[]> downloadFile(@PathVariable UUID id) {
+        FileService.DownloadPayload payload = fileService.downloadSingle(id);
+        return buildDownloadResponse(payload);
+    }
+
+    @PostMapping("/download")
+    public ResponseEntity<byte[]> downloadFiles(@Valid @RequestBody DownloadFilesRequest request) {
+        FileService.DownloadPayload payload = fileService.downloadMultiple(request.ids());
+        return buildDownloadResponse(payload);
+    }
+
+    private ResponseEntity<byte[]> buildDownloadResponse(FileService.DownloadPayload payload) {
+        String contentDisposition = org.springframework.http.ContentDisposition
+                .attachment()
+                .filename(payload.fileName(), StandardCharsets.UTF_8)
+                .build()
+                .toString();
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(payload.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .body(payload.content());
     }
 }
