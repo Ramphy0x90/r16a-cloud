@@ -42,7 +42,7 @@ public class UserController {
 
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> getUser(@PathVariable UUID id) {
-        return ResponseEntity.ok(userService.getUserById(id));
+        return ResponseEntity.ok(UserResponse.from(userService.findUserByIdOrThrow(id)));
     }
 
     @GetMapping

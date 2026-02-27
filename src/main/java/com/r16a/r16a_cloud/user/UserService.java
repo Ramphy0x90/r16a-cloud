@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -20,14 +21,24 @@ public class UserService {
 
     private final UserRepository userRepository;
 
-    public UserResponse getUserById(UUID id) {
-        return UserResponse.from(findUserOrThrow(id));
+    public Optional<User> findUserById(UUID id) {
+        return userRepository.findById(id);
     }
 
-    public UserResponse getUserByUsername(String username) {
-        return userRepository.findByUsername(username)
-                .map(UserResponse::from)
-                .orElseThrow(() -> new ResourceNotFoundException("User", "username", username));
+    public User findUserByIdOrThrow(UUID id) {
+        return findUserById(id).orElseThrow(
+                () -> new ResourceNotFoundException("User", "id", id)
+        );
+    }
+
+    public Optional<User> getUserByUsername(String username) {
+        return userRepository.findByUsername(username);
+    }
+
+    public User getUserByUsernameOrThrow(String username) {
+        return userRepository.findByUsername(username).orElseThrow(
+                () -> new ResourceNotFoundException("User", "username", username)
+        );
     }
 
     public Page<UserResponse> getAllUsers(Pageable pageable) {
@@ -49,7 +60,7 @@ public class UserService {
     }
 
     public UserResponse updateUser(UUID id, UpdateUserRequest request) {
-        User user = findUserOrThrow(id);
+        User user = findUserByIdOrThrow(id);
 
         if (request.displayName() != null) {
             user.setDisplayName(request.displayName());
@@ -63,11 +74,7 @@ public class UserService {
     }
 
     public void deleteUser(UUID id) {
-        userRepository.delete(findUserOrThrow(id));
-    }
-
-    private User findUserOrThrow(UUID id) {
-        return userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        User user = findUserByIdOrThrow(id);
+        userRepository.delete(user);
     }
 }
