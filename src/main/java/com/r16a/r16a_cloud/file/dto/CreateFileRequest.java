@@ -9,9 +9,16 @@ import java.util.Set;
 import java.util.UUID;
 
 public record CreateFileRequest(
-        @NotBlank @Size(max = 255) String name,
-        @Size(max = 1000) String description,
-        @NotNull UUID ownerId,
+        @NotBlank
+        @Size(max = 255)
+        String name,
+
+        @Size(max = 1000)
+        String description,
+
+        @NotNull
+        UUID ownerId,
+
         UUID parentId,
         boolean isDirectory,
         Visibility visibility,
