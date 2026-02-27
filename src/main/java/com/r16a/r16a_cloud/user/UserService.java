@@ -51,13 +51,6 @@ public class UserService {
     public UserResponse updateUser(UUID id, UpdateUserRequest request) {
         User user = findUserOrThrow(id);
 
-        if (request.email() != null) {
-            if (userRepository.existsByEmail(request.email()) && !request.email().equals(user.getEmail())) {
-                throw new ResourceAlreadyExistsException("User", "email", request.email());
-            }
-            user.setEmail(request.email());
-        }
-
         if (request.displayName() != null) {
             user.setDisplayName(request.displayName());
         }
