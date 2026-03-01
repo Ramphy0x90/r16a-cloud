@@ -8,6 +8,11 @@ import com.r16a.r16a_cloud.file.dto.FileResponse;
 import com.r16a.r16a_cloud.file.dto.UpdateFileRequest;
 import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;
+import jakarta.annotation.PostConstruct;
+import javax.imageio.ImageIO;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,7 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import jakarta.annotation.PostConstruct;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
@@ -244,6 +249,38 @@ public class FileService {
                 "application/zip",
                 content
         );
+    }
+
+    public ThumbnailPayload downloadThumbnail(UUID id, ThumbnailSize size) {
+        File file = findFileOrThrow(id);
+        if (file.isDirectory()) {
+            throw new StorageException("Cannot generate thumbnail for a directory.");
+        }
+
+        Path path = Path.of(file.getFsPath());
+        try {
+            if (!Files.exists(path) || Files.isDirectory(path)) {
+                throw new StorageException("File content is unavailable: " + file.getName());
+            }
+
+            String contentType = Files.probeContentType(path);
+            if (contentType == null || contentType.isBlank()) {
+                contentType = "application/octet-stream";
+            }
+
+            if (!contentType.startsWith("image/")) {
+                throw new StorageException("Thumbnails are only supported for image files.");
+            }
+
+            byte[] originalContent = Files.readAllBytes(path);
+            long lastModifiedEpochMs = Files.getLastModifiedTime(path).toMillis();
+            ThumbnailBinary thumbnailBinary = tryBuildThumbnail(originalContent, contentType, size.maxDimensionPx());
+            String eTag = "\"" + id + ":" + size.queryValue() + ":" + lastModifiedEpochMs + ":" + thumbnailBinary.content().length + "\"";
+
+            return new ThumbnailPayload(thumbnailBinary.contentType(), thumbnailBinary.content(), lastModifiedEpochMs, eTag);
+        } catch (IOException ex) {
+            throw new StorageException("Failed to generate thumbnail for file: " + file.getName(), ex);
+        }
     }
 
     private File findFileOrThrow(UUID id) {
@@ -537,6 +574,128 @@ public class FileService {
         return candidate;
     }
 
+    private ThumbnailBinary tryBuildThumbnail(byte[] originalContent, String contentType, int maxDimensionPx) {
+        if (isVectorOrUnsupportedForResize(contentType)) {
+            return new ThumbnailBinary(originalContent, contentType);
+        }
+
+        try (ByteArrayInputStream input = new ByteArrayInputStream(originalContent);
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            BufferedImage source = ImageIO.read(input);
+            if (source == null) {
+                return new ThumbnailBinary(originalContent, contentType);
+            }
+
+            int sourceWidth = source.getWidth();
+            int sourceHeight = source.getHeight();
+            int largestDimension = Math.max(sourceWidth, sourceHeight);
+            if (largestDimension <= maxDimensionPx) {
+                return new ThumbnailBinary(originalContent, contentType);
+            }
+
+            double ratio = (double) maxDimensionPx / largestDimension;
+            int targetWidth = Math.max(1, (int) Math.round(sourceWidth * ratio));
+            int targetHeight = Math.max(1, (int) Math.round(sourceHeight * ratio));
+            int bufferedType = source.getColorModel().hasAlpha() ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB;
+            BufferedImage resized = new BufferedImage(targetWidth, targetHeight, bufferedType);
+
+            Graphics2D graphics = resized.createGraphics();
+            try {
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+                graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                graphics.drawImage(source, 0, 0, targetWidth, targetHeight, null);
+            } finally {
+                graphics.dispose();
+            }
+
+            String outputFormat = resolveOutputFormat(contentType, resized.getColorModel().hasAlpha());
+            boolean writeOk = ImageIO.write(resized, outputFormat, output);
+            if (!writeOk) {
+                return new ThumbnailBinary(originalContent, contentType);
+            }
+
+            return new ThumbnailBinary(output.toByteArray(), resolveContentTypeFromOutputFormat(outputFormat));
+        } catch (IOException ex) {
+            log.warn("Failed to resize image, returning original content.", ex);
+            return new ThumbnailBinary(originalContent, contentType);
+        }
+    }
+
+    private boolean isVectorOrUnsupportedForResize(String contentType) {
+        return "image/svg+xml".equalsIgnoreCase(contentType) || "image/avif".equalsIgnoreCase(contentType);
+    }
+
+    private String resolveOutputFormat(String contentType, boolean hasAlpha) {
+        if ("image/jpeg".equalsIgnoreCase(contentType) || "image/jpg".equalsIgnoreCase(contentType)) {
+            return "jpg";
+        }
+        if ("image/bmp".equalsIgnoreCase(contentType)) {
+            return "bmp";
+        }
+        if ("image/gif".equalsIgnoreCase(contentType)) {
+            return "gif";
+        }
+        if ("image/png".equalsIgnoreCase(contentType) || "image/webp".equalsIgnoreCase(contentType) || hasAlpha) {
+            return "png";
+        }
+        return "jpg";
+    }
+
+    private String resolveContentTypeFromOutputFormat(String outputFormat) {
+        return switch (outputFormat.toLowerCase()) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "gif" -> "image/gif";
+            case "bmp" -> "image/bmp";
+            default -> "application/octet-stream";
+        };
+    }
+
     public record DownloadPayload(String fileName, String contentType, byte[] content) {
+    }
+
+    public record ThumbnailPayload(
+            String contentType,
+            byte[] content,
+            long lastModifiedEpochMs,
+            String eTag
+    ) {
+    }
+
+    private record ThumbnailBinary(byte[] content, String contentType) {
+    }
+
+    public enum ThumbnailSize {
+        SMALL("small", 200),
+        MEDIUM("medium", 512);
+
+        private final String queryValue;
+        private final int maxDimensionPx;
+
+        ThumbnailSize(String queryValue, int maxDimensionPx) {
+            this.queryValue = queryValue;
+            this.maxDimensionPx = maxDimensionPx;
+        }
+
+        public String queryValue() {
+            return queryValue;
+        }
+
+        public int maxDimensionPx() {
+            return maxDimensionPx;
+        }
+
+        public static ThumbnailSize fromQueryValue(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return SMALL;
+            }
+            for (ThumbnailSize value : values()) {
+                if (value.queryValue.equalsIgnoreCase(raw)) {
+                    return value;
+                }
+            }
+            throw new StorageException("Unsupported thumbnail size: " + raw);
+        }
     }
 }

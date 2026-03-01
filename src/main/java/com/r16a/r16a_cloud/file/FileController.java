@@ -7,17 +7,20 @@ import com.r16a.r16a_cloud.file.dto.UpdateFileRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
 
@@ -80,6 +83,27 @@ public class FileController {
     public ResponseEntity<byte[]> downloadFile(@PathVariable UUID id) {
         FileService.DownloadPayload payload = fileService.downloadSingle(id);
         return buildDownloadResponse(payload);
+    }
+
+    @GetMapping("/{id}/thumbnail")
+    public ResponseEntity<byte[]> downloadThumbnail(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "small") String size,
+            WebRequest webRequest
+    ) {
+        FileService.ThumbnailSize thumbnailSize = FileService.ThumbnailSize.fromQueryValue(size);
+        FileService.ThumbnailPayload payload = fileService.downloadThumbnail(id, thumbnailSize);
+
+        if (webRequest.checkNotModified(payload.eTag(), payload.lastModifiedEpochMs())) {
+            return ResponseEntity.status(HttpStatus.NOT_MODIFIED).build();
+        }
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(7)).cachePrivate().mustRevalidate())
+                .eTag(payload.eTag())
+                .lastModified(payload.lastModifiedEpochMs())
+                .contentType(MediaType.parseMediaType(payload.contentType()))
+                .body(payload.content());
     }
 
     @PostMapping("/download")
