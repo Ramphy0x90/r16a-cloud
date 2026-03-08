@@ -10,7 +10,7 @@ jobs:
         environment: Deploy
         env:
             KUBECONFIG: /home/r16a-runner/.kube/config
-    
+
         steps:
             - uses: actions/checkout@v4
 
