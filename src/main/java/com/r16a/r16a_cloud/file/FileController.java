@@ -1,6 +1,7 @@
 package com.r16a.r16a_cloud.file;
 
 import com.r16a.r16a_cloud.file.dto.CreateFileRequest;
+import com.r16a.r16a_cloud.file.dto.DashboardResponse;
 import com.r16a.r16a_cloud.file.dto.DownloadFilesRequest;
 import com.r16a.r16a_cloud.file.dto.FileResponse;
 import com.r16a.r16a_cloud.file.dto.UpdateFileRequest;
@@ -63,6 +64,11 @@ public class FileController {
             Pageable pageable
     ) {
         return ResponseEntity.ok(fileService.getFiles(ownerId, parentId, pageable));
+    }
+
+    @GetMapping("/dashboard")
+    public ResponseEntity<DashboardResponse> getDashboard(@RequestParam UUID ownerId) {
+        return ResponseEntity.ok(fileService.getDashboard(ownerId));
     }
 
     @PutMapping("/{id}")

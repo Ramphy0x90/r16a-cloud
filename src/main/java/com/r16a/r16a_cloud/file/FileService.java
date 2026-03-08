@@ -4,7 +4,10 @@ import com.r16a.r16a_cloud.exception.ResourceAlreadyExistsException;
 import com.r16a.r16a_cloud.exception.ResourceNotFoundException;
 import com.r16a.r16a_cloud.exception.StorageException;
 import com.r16a.r16a_cloud.file.dto.CreateFileRequest;
+import com.r16a.r16a_cloud.file.dto.DashboardMetricsResponse;
+import com.r16a.r16a_cloud.file.dto.DashboardResponse;
 import com.r16a.r16a_cloud.file.dto.FileResponse;
+import com.r16a.r16a_cloud.file.dto.RecentFileItemResponse;
 import com.r16a.r16a_cloud.file.dto.UpdateFileRequest;
 import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;
@@ -82,6 +85,24 @@ public class FileService {
         }
 
         return files.map(FileResponse::from);
+    }
+
+    public DashboardResponse getDashboard(UUID ownerId) {
+        if (!userRepository.existsById(ownerId)) {
+            throw new ResourceNotFoundException("User", "id", ownerId);
+        }
+
+        long uploadedFiles = fileRepository.countByOwnerIdAndIsDirectoryFalse(ownerId);
+        long usedStorageBytes = fileRepository.sumFileSizeBytesByOwnerId(ownerId);
+        long sharedFiles = fileRepository.countSharedFilesByOwnerId(ownerId);
+        List<RecentFileItemResponse> recentFiles = fileRepository
+                .findTop5ByOwnerIdAndIsDirectoryFalseOrderByUpdatedAtDesc(ownerId)
+                .stream()
+                .map(RecentFileItemResponse::from)
+                .toList();
+
+        DashboardMetricsResponse metrics = new DashboardMetricsResponse(uploadedFiles, usedStorageBytes, sharedFiles);
+        return new DashboardResponse(metrics, recentFiles);
     }
 
     @Transactional
