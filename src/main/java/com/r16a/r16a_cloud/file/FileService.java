@@ -87,6 +87,14 @@ public class FileService {
         return files.map(FileResponse::from);
     }
 
+    public Page<FileResponse> getFilesSharedWithUser(UUID userId, Pageable pageable) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("User", "id", userId);
+        }
+
+        return fileRepository.findFilesSharedWithUser(userId, pageable).map(FileResponse::from);
+    }
+
     public DashboardResponse getDashboard(UUID ownerId) {
         if (!userRepository.existsById(ownerId)) {
             throw new ResourceNotFoundException("User", "id", ownerId);

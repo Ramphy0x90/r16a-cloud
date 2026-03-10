@@ -47,4 +47,13 @@ public interface FileRepository extends JpaRepository<File, UUID> {
     long countSharedFilesByOwnerId(@Param("ownerId") UUID ownerId);
 
     List<File> findTop5ByOwnerIdAndIsDirectoryFalseOrderByUpdatedAtDesc(UUID ownerId);
+
+    @Query("""
+            select distinct f
+            from File f
+            join f.sharedWith sharedUser
+            where sharedUser.id = :userId
+              and f.owner.id <> :userId
+            """)
+    Page<File> findFilesSharedWithUser(@Param("userId") UUID userId, Pageable pageable);
 }
