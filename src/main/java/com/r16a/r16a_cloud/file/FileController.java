@@ -4,6 +4,7 @@ import com.r16a.r16a_cloud.file.dto.CreateFileRequest;
 import com.r16a.r16a_cloud.file.dto.DashboardResponse;
 import com.r16a.r16a_cloud.file.dto.DownloadFilesRequest;
 import com.r16a.r16a_cloud.file.dto.FileResponse;
+import com.r16a.r16a_cloud.file.dto.UpdateFileSharingRequest;
 import com.r16a.r16a_cloud.file.dto.UpdateFileRequest;
 import com.r16a.r16a_cloud.user.User;
 import jakarta.validation.Valid;
@@ -87,6 +88,14 @@ public class FileController {
             @Valid @RequestBody UpdateFileRequest request
     ) {
         return ResponseEntity.ok(fileService.updateFile(id, request));
+    }
+
+    @PatchMapping("/{id}/sharing")
+    public ResponseEntity<FileResponse> updateFileSharing(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateFileSharingRequest request
+    ) {
+        return ResponseEntity.ok(fileService.updateFileSharing(id, request));
     }
 
     @DeleteMapping("/{id}")

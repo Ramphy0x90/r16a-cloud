@@ -8,6 +8,7 @@ import com.r16a.r16a_cloud.file.dto.DashboardMetricsResponse;
 import com.r16a.r16a_cloud.file.dto.DashboardResponse;
 import com.r16a.r16a_cloud.file.dto.FileResponse;
 import com.r16a.r16a_cloud.file.dto.RecentFileItemResponse;
+import com.r16a.r16a_cloud.file.dto.UpdateFileSharingRequest;
 import com.r16a.r16a_cloud.file.dto.UpdateFileRequest;
 import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;
@@ -242,6 +243,15 @@ public class FileService {
     }
 
     @Transactional
+    public FileResponse updateFileSharing(UUID id, UpdateFileSharingRequest request) {
+        File file = findFileOrThrow(id);
+        Set<User> sharedUsers = resolveUsers(request.sharedWithIds());
+        file.setSharedWith(sharedUsers);
+        applyVisibilityForSharing(file, sharedUsers);
+        return FileResponse.from(fileRepository.save(file));
+    }
+
+    @Transactional
     public void deleteFile(UUID id) {
         File file = findFileOrThrow(id);
         deleteFsEntry(Path.of(file.getFsPath()));
@@ -365,6 +375,17 @@ public class FileService {
         }
 
         return users;
+    }
+
+    private void applyVisibilityForSharing(File file, Set<User> sharedUsers) {
+        if (!sharedUsers.isEmpty()) {
+            file.setVisibility(Visibility.SHARED);
+            return;
+        }
+
+        if (file.getVisibility() == Visibility.SHARED) {
+            file.setVisibility(Visibility.PRIVATE);
+        }
     }
 
     private Path resolveTargetPath(UUID ownerId, File parent, String name) {
