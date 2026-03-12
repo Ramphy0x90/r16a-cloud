@@ -12,6 +12,7 @@ public record UserResponse(
         String email,
         String displayName,
         Role role,
+        UserPreferencesResponse preferences,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -22,6 +23,7 @@ public record UserResponse(
                 user.getEmail(),
                 user.getDisplayName(),
                 user.getRole(),
+                UserPreferencesResponse.from(user.getPreferences()),
                 user.getCreatedAt(),
                 user.getUpdatedAt()
         );

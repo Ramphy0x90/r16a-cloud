@@ -1,6 +1,7 @@
 package com.r16a.r16a_cloud.security;
 
 import com.r16a.r16a_cloud.user.User;
+import com.r16a.r16a_cloud.user.UserPreferences;
 import com.r16a.r16a_cloud.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +50,11 @@ public class OidcJwtAuthenticationConverter implements Converter<Jwt, UsernamePa
 
     private User updateIfChanged(User user, String username, String email, String displayName) {
         boolean changed = false;
+
+        if (user.getPreferences() == null) {
+            user.setPreferences(UserPreferences.builder().build());
+            changed = true;
+        }
 
         if (username != null && !username.equals(user.getUsername())) {
             user.setUsername(username);

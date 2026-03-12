@@ -1,6 +1,7 @@
 package com.r16a.r16a_cloud.user;
 
 import com.r16a.r16a_cloud.user.dto.CreateUserRequest;
+import com.r16a.r16a_cloud.user.dto.UpdateMyPreferencesRequest;
 import com.r16a.r16a_cloud.user.dto.UpdateUserRequest;
 import com.r16a.r16a_cloud.user.dto.UserResponse;
 import jakarta.validation.Valid;
@@ -14,6 +15,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,7 +34,15 @@ public class UserController {
 
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal User user) {
-        return ResponseEntity.ok(UserResponse.from(user));
+        return ResponseEntity.ok(UserResponse.from(userService.findUserByIdOrThrow(user.getId())));
+    }
+
+    @PatchMapping("/me/preferences")
+    public ResponseEntity<UserResponse> updateCurrentUserPreferences(
+            @AuthenticationPrincipal User user,
+            @Valid @RequestBody UpdateMyPreferencesRequest request
+    ) {
+        return ResponseEntity.ok(userService.updateMyPreferences(user.getId(), request));
     }
 
     @PostMapping

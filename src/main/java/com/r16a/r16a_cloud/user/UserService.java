@@ -3,6 +3,7 @@ package com.r16a.r16a_cloud.user;
 import com.r16a.r16a_cloud.exception.ResourceAlreadyExistsException;
 import com.r16a.r16a_cloud.exception.ResourceNotFoundException;
 import com.r16a.r16a_cloud.user.dto.CreateUserRequest;
+import com.r16a.r16a_cloud.user.dto.UpdateMyPreferencesRequest;
 import com.r16a.r16a_cloud.user.dto.UpdateUserRequest;
 import com.r16a.r16a_cloud.user.dto.UserResponse;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +71,24 @@ public class UserService {
             user.setRole(request.role());
         }
 
+        return UserResponse.from(userRepository.save(user));
+    }
+
+    public UserResponse updateMyPreferences(UUID currentUserId, UpdateMyPreferencesRequest request) {
+        User user = findUserByIdOrThrow(currentUserId);
+        UserPreferences preferences = user.getPreferences() != null
+                ? user.getPreferences()
+                : UserPreferences.builder().build();
+
+        if (request.preferences().preferredTheme() != null) {
+            preferences.setPreferredTheme(request.preferences().preferredTheme().toLowerCase());
+        }
+
+        if (request.preferences().encryptFilesByDefault() != null) {
+            preferences.setEncryptFilesByDefault(request.preferences().encryptFilesByDefault());
+        }
+
+        user.setPreferences(preferences);
         return UserResponse.from(userRepository.save(user));
     }
 
