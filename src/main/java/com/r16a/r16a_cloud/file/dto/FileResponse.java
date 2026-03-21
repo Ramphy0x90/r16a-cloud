@@ -18,6 +18,7 @@ public record FileResponse(
         Visibility visibility,
         UUID parentId,
         UUID ownerId,
+        String ownerDisplayName,
         Set<UUID> sharedWithIds,
         Instant createdAt,
         Instant updatedAt
@@ -32,6 +33,7 @@ public record FileResponse(
                 file.getVisibility(),
                 file.getParent() != null ? file.getParent().getId() : null,
                 file.getOwner().getId(),
+                file.getOwner().getDisplayName(),
                 file.getSharedWith().stream().map(User::getId).collect(Collectors.toSet()),
                 file.getCreatedAt(),
                 file.getUpdatedAt()
