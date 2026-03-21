@@ -1,5 +1,8 @@
 package com.r16a.r16a_cloud.file;
 
+import com.r16a.r16a_cloud.file.dto.ChunkUploadInitRequest;
+import com.r16a.r16a_cloud.file.dto.ChunkUploadInitResponse;
+import com.r16a.r16a_cloud.file.dto.ChunkUploadStatusResponse;
 import com.r16a.r16a_cloud.file.dto.CreateFileRequest;
 import com.r16a.r16a_cloud.file.dto.DashboardResponse;
 import com.r16a.r16a_cloud.file.dto.DownloadFilesRequest;
@@ -8,6 +11,7 @@ import com.r16a.r16a_cloud.file.dto.UpdateFileSharingRequest;
 import com.r16a.r16a_cloud.file.dto.UpdateFileRequest;
 import com.r16a.r16a_cloud.user.User;
 import jakarta.validation.Valid;
+import java.io.InputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.CacheControl;
@@ -39,6 +43,53 @@ public class FileController {
     @PostMapping
     public ResponseEntity<FileResponse> createFile(@Valid @RequestBody CreateFileRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(fileService.createFile(request));
+    }
+
+    @PostMapping("/upload/init")
+    public ResponseEntity<ChunkUploadInitResponse> initChunkedUpload(
+            @Valid @RequestBody ChunkUploadInitRequest request,
+            @AuthenticationPrincipal User user
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                fileService.initChunkedUpload(request, user.getId())
+        );
+    }
+
+    @PutMapping(value = "/upload/{uploadId}/part", consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public ResponseEntity<Void> uploadChunk(
+            @PathVariable UUID uploadId,
+            @AuthenticationPrincipal User user,
+            InputStream body
+    ) {
+        fileService.uploadChunk(uploadId, user.getId(), body);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/upload/{uploadId}/status")
+    public ResponseEntity<ChunkUploadStatusResponse> getChunkedUploadStatus(
+            @PathVariable UUID uploadId,
+            @AuthenticationPrincipal User user
+    ) {
+        return ResponseEntity.ok(fileService.getChunkedUploadStatus(uploadId, user.getId()));
+    }
+
+    @PostMapping("/upload/{uploadId}/complete")
+    public ResponseEntity<FileResponse> completeChunkedUpload(
+            @PathVariable UUID uploadId,
+            @AuthenticationPrincipal User user
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                fileService.completeChunkedUpload(uploadId, user.getId())
+        );
+    }
+
+    @DeleteMapping("/upload/{uploadId}")
+    public ResponseEntity<Void> cancelChunkedUpload(
+            @PathVariable UUID uploadId,
+            @AuthenticationPrincipal User user
+    ) {
+        fileService.cancelChunkedUpload(uploadId, user.getId());
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/upload")
