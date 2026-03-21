@@ -34,10 +34,17 @@ public class UserPreferences {
     @Builder.Default
     private boolean encryptFilesByDefault = false;
 
+    @Column(nullable = false, columnDefinition = "VARCHAR(16) DEFAULT 'grid'")
+    @Builder.Default
+    private String defaultViewMode = "grid";
+
     @PrePersist
     protected void onCreate() {
         if (preferredTheme == null || preferredTheme.isBlank()) {
             preferredTheme = "light";
+        }
+        if (defaultViewMode == null || defaultViewMode.isBlank()) {
+            defaultViewMode = "grid";
         }
     }
 }

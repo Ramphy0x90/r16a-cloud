@@ -88,6 +88,10 @@ public class UserService {
             preferences.setEncryptFilesByDefault(request.preferences().encryptFilesByDefault());
         }
 
+        if (request.preferences().defaultViewMode() != null) {
+            preferences.setDefaultViewMode(request.preferences().defaultViewMode().toLowerCase());
+        }
+
         user.setPreferences(preferences);
         return UserResponse.from(userRepository.save(user));
     }
