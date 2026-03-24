@@ -31,17 +31,18 @@ public class OidcJwtAuthenticationConverter implements Converter<Jwt, UsernamePa
     private User syncUser(Jwt jwt) {
         String sub = jwt.getSubject();
         String username = jwt.getClaimAsString("preferred_username");
-        String email = jwt.getClaimAsString("email");
         String displayName = jwt.getClaimAsString("given_name");
+        String email = jwt.getClaimAsString("email");
+        String sanitizedEmail = email == null || email.isEmpty() ? username : email;
 
         return userRepository.findByExternalId(sub)
-                .map(existing -> updateIfChanged(existing, username, email, displayName))
+                .map(existing -> updateIfChanged(existing, username, sanitizedEmail, displayName))
                 .orElseGet(() -> {
                     User newUser = User.builder()
                             .externalId(sub)
                             .username(username)
                             .displayName(displayName)
-                            .email(email)
+                            .email(sanitizedEmail)
                             .build();
                     log.info("New user created from IdP '{}'", username);
                     return userRepository.save(newUser);
