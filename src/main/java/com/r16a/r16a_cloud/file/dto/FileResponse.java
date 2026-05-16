@@ -21,7 +21,8 @@ public record FileResponse(
         String ownerDisplayName,
         Set<UUID> sharedWithIds,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        String blurHash
 ) {
     public static FileResponse from(File file) {
         return new FileResponse(
@@ -36,7 +37,8 @@ public record FileResponse(
                 file.getOwner().getDisplayName(),
                 file.getSharedWith().stream().map(User::getId).collect(Collectors.toSet()),
                 file.getCreatedAt(),
-                file.getUpdatedAt()
+                file.getUpdatedAt(),
+                file.getBlurHash()
         );
     }
 }

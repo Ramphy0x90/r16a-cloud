@@ -1,34 +1,26 @@
 package com.r16a.r16a_cloud.file;
 
-import com.r16a.r16a_cloud.file.dto.ChunkUploadInitRequest;
-import com.r16a.r16a_cloud.file.dto.ChunkUploadInitResponse;
-import com.r16a.r16a_cloud.file.dto.ChunkUploadStatusResponse;
-import com.r16a.r16a_cloud.file.dto.CreateFileRequest;
-import com.r16a.r16a_cloud.file.dto.DashboardResponse;
-import com.r16a.r16a_cloud.file.dto.DownloadFilesRequest;
-import com.r16a.r16a_cloud.file.dto.FileResponse;
-import com.r16a.r16a_cloud.file.dto.UpdateFileSharingRequest;
-import com.r16a.r16a_cloud.file.dto.UpdateFileRequest;
+import com.r16a.r16a_cloud.file.dto.*;
 import com.r16a.r16a_cloud.user.User;
 import jakarta.validation.Valid;
-import java.io.InputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.CacheControl;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.context.request.WebRequest;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
@@ -157,8 +149,15 @@ public class FileController {
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<StreamingResponseBody> downloadFile(@PathVariable UUID id) {
+    public ResponseEntity<StreamingResponseBody> downloadFile(
+            @PathVariable UUID id,
+            @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader
+    ) {
         FileService.DownloadPayload payload = fileService.downloadSingle(id);
+        if (rangeHeader != null && payload.sourcePath() != null) {
+            return buildRangeResponse(payload, rangeHeader);
+        }
+
         return buildDownloadResponse(payload);
     }
 
@@ -176,7 +175,7 @@ public class FileController {
         }
 
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(Duration.ofDays(7)).cachePrivate().mustRevalidate())
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable())
                 .eTag(payload.eTag())
                 .lastModified(payload.lastModifiedEpochMs())
                 .contentType(MediaType.parseMediaType(payload.contentType()))
@@ -198,12 +197,87 @@ public class FileController {
 
         ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(payload.contentType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition);
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .header(HttpHeaders.ACCEPT_RANGES, payload.sourcePath() != null ? "bytes" : "none");
 
         if (payload.contentLength() >= 0) {
             builder = builder.contentLength(payload.contentLength());
         }
 
         return builder.body(payload.body());
+    }
+
+    private ResponseEntity<StreamingResponseBody> buildRangeResponse(FileService.DownloadPayload payload, String rangeHeader) {
+        long total = payload.contentLength();
+
+        if (!rangeHeader.startsWith("bytes=")) {
+            return buildDownloadResponse(payload);
+        }
+
+        String[] parts = rangeHeader.substring(6).split("-", 2);
+        long start, end;
+        try {
+            if (parts[0].isEmpty()) {
+                long suffix = Long.parseLong(parts[1]);
+                start = Math.max(0, total - suffix);
+                end = total - 1;
+            } else if (parts.length < 2 || parts[1].isEmpty()) {
+                start = Long.parseLong(parts[0]);
+                end = total - 1;
+            } else {
+                start = Long.parseLong(parts[0]);
+                end = Long.parseLong(parts[1]);
+            }
+        } catch (NumberFormatException ex) {
+            return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + total)
+                    .build();
+        }
+
+        if (start < 0 || end >= total || start > end) {
+            return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + total)
+                    .build();
+        }
+
+        long rangeLength = end - start + 1;
+        Path sourcePath = payload.sourcePath();
+        final long finalStart = start;
+        final long finalLength = rangeLength;
+
+        StreamingResponseBody body = outputStream -> {
+            try (FileChannel channel = FileChannel.open(sourcePath, StandardOpenOption.READ)) {
+                channel.position(finalStart);
+                long remaining = finalLength;
+                ByteBuffer buffer = ByteBuffer.allocate(65536);
+                while (remaining > 0) {
+                    buffer.clear();
+                    if (remaining < buffer.capacity()) buffer.limit((int) remaining);
+                    int read = channel.read(buffer);
+                    if (read <= 0) break;
+                    buffer.flip();
+                    byte[] bytes = new byte[buffer.remaining()];
+                    buffer.get(bytes);
+                    outputStream.write(bytes);
+                    remaining -= read;
+                }
+            } catch (IOException ex) {
+                throw new RuntimeException("Failed to stream file range", ex);
+            }
+        };
+
+        String contentDisposition = org.springframework.http.ContentDisposition
+                .attachment()
+                .filename(payload.fileName(), StandardCharsets.UTF_8)
+                .build()
+                .toString();
+
+        return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                .contentType(MediaType.parseMediaType(payload.contentType()))
+                .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + total)
+                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .contentLength(rangeLength)
+                .body(body);
     }
 }

@@ -65,6 +65,7 @@ public class FileService {
     void initUploadRoot() {
         try {
             Files.createDirectories(Path.of(uploadRootPath));
+            Files.createDirectories(thumbnailsDir());
         } catch (IOException ex) {
             throw new StorageException(
                     "Failed to initialize upload root '" + uploadRootPath + "': " + ex.getMessage(),
@@ -169,6 +170,8 @@ public class FileService {
         Path targetPath = resolveTargetPath(ownerId, parent, fileName);
         writeUploadedFile(upload, targetPath);
 
+        String blurHash = computeBlurHash(targetPath);
+
         File file = File.builder()
                 .name(fileName)
                 .description(description)
@@ -179,6 +182,7 @@ public class FileService {
                 .parent(parent)
                 .owner(owner)
                 .sharedWith(resolveUsers(sharedWithIds))
+                .blurHash(blurHash)
                 .build();
 
         try {
@@ -327,6 +331,8 @@ public class FileService {
             throw new StorageException("Failed to finalize chunked upload: " + ex.getMessage(), ex);
         }
 
+        String blurHash = computeBlurHash(targetPath);
+
         File file = File.builder()
                 .name(session.fileName())
                 .description(session.description())
@@ -339,6 +345,7 @@ public class FileService {
                 .sharedWith(resolveUsers(
                         session.sharedWithIds() != null ? session.sharedWithIds() : Set.of()
                 ))
+                .blurHash(blurHash)
                 .build();
 
         try {
@@ -455,6 +462,7 @@ public class FileService {
     public void deleteFile(UUID id) {
         File file = findFileOrThrow(id);
         deleteFsEntry(Path.of(file.getFsPath()));
+        deleteThumbnailCache(id);
         deleteFromDbRecursively(file);
     }
 
@@ -464,7 +472,7 @@ public class FileService {
             return buildSingleFilePayload(file);
         }
 
-        return new DownloadPayload(file.getName() + ".zip", "application/zip", zipFiles(List.of(file)), -1);
+        return new DownloadPayload(file.getName() + ".zip", "application/zip", zipFiles(List.of(file)), -1, null);
     }
 
     public DownloadPayload downloadMultiple(List<UUID> ids) {
@@ -478,7 +486,7 @@ public class FileService {
         }
 
         String zipName = "download_" + Instant.now().toEpochMilli() + ".zip";
-        return new DownloadPayload(zipName, "application/zip", zipFiles(files), -1);
+        return new DownloadPayload(zipName, "application/zip", zipFiles(files), -1, null);
     }
 
     public ThumbnailPayload downloadThumbnail(UUID id, ThumbnailSize size) {
@@ -488,26 +496,49 @@ public class FileService {
         }
 
         Path path = Path.of(file.getFsPath());
+        if (!Files.exists(path) || Files.isDirectory(path)) {
+            throw new StorageException("File content is unavailable: " + file.getName());
+        }
+
+        String contentType;
         try {
-            if (!Files.exists(path) || Files.isDirectory(path)) {
-                throw new StorageException("File content is unavailable: " + file.getName());
-            }
+            contentType = Files.probeContentType(path);
+        } catch (IOException ex) {
+            throw new StorageException("Failed to read file metadata: " + file.getName(), ex);
+        }
 
-            String contentType = Files.probeContentType(path);
-            if (contentType == null || contentType.isBlank()) {
-                contentType = "application/octet-stream";
-            }
+        if (contentType == null || contentType.isBlank()) contentType = "application/octet-stream";
+        if (!contentType.startsWith("image/")) {
+            throw new StorageException("Thumbnails are only supported for image files.");
+        }
 
-            if (!contentType.startsWith("image/")) {
-                throw new StorageException("Thumbnails are only supported for image files.");
-            }
+        long lastModifiedEpochMs = file.getUpdatedAt().toEpochMilli();
 
+        // Serve from disk cache if available
+        String outputFormat = resolveOutputFormatFromContentType(contentType);
+        Path cachePath = thumbnailCachePath(id, size, outputFormat);
+        if (Files.exists(cachePath)) {
+            try {
+                byte[] cached = Files.readAllBytes(cachePath);
+                String cachedType = resolveContentTypeFromOutputFormat(outputFormat);
+                return new ThumbnailPayload(cachedType, cached, lastModifiedEpochMs, buildThumbnailETag(id, size, lastModifiedEpochMs, cached.length));
+            } catch (IOException ex) {
+                log.warn("Failed to read thumbnail cache for {}, regenerating", id);
+            }
+        }
+
+        // Generate, persist, and return
+        try {
             byte[] originalContent = Files.readAllBytes(path);
-            long lastModifiedEpochMs = Files.getLastModifiedTime(path).toMillis();
-            ThumbnailBinary thumbnailBinary = tryBuildThumbnail(originalContent, contentType, size.maxDimensionPx());
-            String eTag = "\"" + id + ":" + size.queryValue() + ":" + lastModifiedEpochMs + ":" + thumbnailBinary.content().length + "\"";
+            ThumbnailBinary tb = tryBuildThumbnail(originalContent, contentType, size.maxDimensionPx());
 
-            return new ThumbnailPayload(thumbnailBinary.contentType(), thumbnailBinary.content(), lastModifiedEpochMs, eTag);
+            try {
+                Files.write(cachePath, tb.content());
+            } catch (IOException ex) {
+                log.warn("Failed to write thumbnail cache for {}: {}", id, ex.getMessage());
+            }
+
+            return new ThumbnailPayload(tb.contentType(), tb.content(), lastModifiedEpochMs, buildThumbnailETag(id, size, lastModifiedEpochMs, tb.content().length));
         } catch (IOException ex) {
             throw new StorageException("Failed to generate thumbnail for file: " + file.getName(), ex);
         }
@@ -847,7 +878,7 @@ public class FileService {
             }
         };
 
-        return new DownloadPayload(file.getName(), contentType, body, contentLength);
+        return new DownloadPayload(file.getName(), contentType, body, contentLength, path);
     }
 
     private StreamingResponseBody zipFiles(List<File> files) {
@@ -908,6 +939,65 @@ public class FileService {
             candidate = baseName + "_" + index++;
         }
         return candidate;
+    }
+
+    private Path thumbnailsDir() {
+        return Path.of(uploadRootPath, ".thumbnails");
+    }
+
+    private Path thumbnailCachePath(UUID fileId, ThumbnailSize size, String format) {
+        return thumbnailsDir().resolve(fileId + "_" + size.queryValue() + "." + format);
+    }
+
+    private String buildThumbnailETag(UUID id, ThumbnailSize size, long lastModifiedEpochMs, int contentLength) {
+        return "\"" + id + ":" + size.queryValue() + ":" + lastModifiedEpochMs + ":" + contentLength + "\"";
+    }
+
+    private void deleteThumbnailCache(UUID fileId) {
+        Path dir = thumbnailsDir();
+        if (!Files.isDirectory(dir)) return;
+        String prefix = fileId.toString();
+
+        try (Stream<Path> entries = Files.list(dir)) {
+            entries.filter(p -> p.getFileName().toString().startsWith(prefix))
+                    .forEach(p -> {
+                        try { Files.deleteIfExists(p); } catch (IOException ex) {
+                            log.warn("Failed to delete thumbnail cache file {}: {}", p, ex.getMessage());
+                        }
+                    });
+        } catch (IOException ex) {
+            log.warn("Failed to list thumbnail cache dir while cleaning file {}: {}", fileId, ex.getMessage());
+        }
+    }
+
+    private String resolveOutputFormatFromContentType(String contentType) {
+        return switch (contentType.toLowerCase()) {
+            case "image/jpeg", "image/jpg", "image/bmp" -> "jpg";
+            case "image/gif" -> "gif";
+            default -> "png";
+        };
+    }
+
+    private String computeBlurHash(Path path) {
+        String contentType;
+        try {
+            contentType = Files.probeContentType(path);
+        } catch (IOException ex) {
+            return null;
+        }
+
+        if (contentType == null || !contentType.startsWith("image/") || isVectorOrUnsupportedForResize(contentType)) {
+            return null;
+        }
+
+        try (InputStream in = Files.newInputStream(path)) {
+            BufferedImage image = ImageIO.read(in);
+            if (image == null) return null;
+            return BlurHashEncoder.encode(image, 4, 3);
+        } catch (Exception ex) {
+            log.warn("Failed to compute BlurHash for {}: {}", path, ex.getMessage());
+            return null;
+        }
     }
 
     private ThumbnailBinary tryBuildThumbnail(byte[] originalContent, String contentType, int maxDimensionPx) {
@@ -988,7 +1078,8 @@ public class FileService {
         };
     }
 
-    public record DownloadPayload(String fileName, String contentType, StreamingResponseBody body, long contentLength) {
+    /** sourcePath is non-null for single files (enables range requests); null for zip archives. */
+    public record DownloadPayload(String fileName, String contentType, StreamingResponseBody body, long contentLength, Path sourcePath) {
     }
 
     public record ThumbnailPayload(

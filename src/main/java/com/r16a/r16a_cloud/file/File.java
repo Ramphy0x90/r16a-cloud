@@ -70,6 +70,9 @@ public class File {
     @Builder.Default
     private Set<User> sharedWith = new HashSet<>();
 
+    @Column(length = 100)
+    private String blurHash;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
