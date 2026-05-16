@@ -4,14 +4,21 @@ import com.r16a.r16a_cloud.exception.ResourceAlreadyExistsException;
 import com.r16a.r16a_cloud.exception.ResourceNotFoundException;
 import com.r16a.r16a_cloud.exception.StorageException;
 import com.r16a.r16a_cloud.file.dto.*;
+import com.r16a.r16a_cloud.file.dto.CursorPageResponse;
 import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +37,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.*;
 import java.util.List;
 import java.util.stream.Stream;
@@ -459,6 +467,10 @@ public class FileService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "thumbnails", key = "#id + ':small'"),
+        @CacheEvict(value = "thumbnails", key = "#id + ':medium'")
+    })
     public void deleteFile(UUID id) {
         File file = findFileOrThrow(id);
         deleteFsEntry(Path.of(file.getFsPath()));
@@ -489,6 +501,7 @@ public class FileService {
         return new DownloadPayload(zipName, "application/zip", zipFiles(files), -1, null);
     }
 
+    @Cacheable(value = "thumbnails", key = "#id + ':' + #size.queryValue()")
     public ThumbnailPayload downloadThumbnail(UUID id, ThumbnailSize size) {
         File file = findFileOrThrow(id);
         if (file.isDirectory()) {
@@ -941,6 +954,108 @@ public class FileService {
         return candidate;
     }
 
+    // ---- Cursor pagination ----
+
+    private record FileCursor(String sortField, String sortDir, boolean lastIsDir, String lastSortValue, String lastId) {}
+
+    @Transactional(readOnly = true)
+    public CursorPageResponse<FileResponse> getFilesCursorPage(
+            UUID ownerId, UUID parentId, String sortField, String sortDir, String cursor, int limit) {
+        if (!userRepository.existsById(ownerId)) {
+            throw new ResourceNotFoundException("User", "id", ownerId);
+        }
+
+        Pageable p = PageRequest.of(0, limit);
+        Slice<File> slice;
+
+        if (cursor == null || cursor.isBlank()) {
+            Sort idTiebreak = Sort.by(Sort.Direction.ASC, "id");
+            Sort fieldSort = "updatedAt".equals(sortField)
+                    ? Sort.by(Sort.Direction.fromString(sortDir), "updatedAt").and(idTiebreak)
+                    : Sort.by(Sort.Direction.fromString(sortDir), "name").and(idTiebreak);
+            Sort fullSort = Sort.by(Sort.Direction.DESC, "isDirectory").and(fieldSort);
+
+            Pageable firstPage = PageRequest.of(0, limit, fullSort);
+            slice = parentId != null
+                    ? fileRepository.findSliceByParentIdAndOwnerId(parentId, ownerId, firstPage)
+                    : fileRepository.findSliceByParentIsNullAndOwnerId(ownerId, firstPage);
+        } else {
+            FileCursor fc = decodeCursor(cursor);
+            slice = fetchByCursor(ownerId, parentId, fc, p);
+            sortField = fc.sortField();
+            sortDir = fc.sortDir();
+        }
+
+        String nextCursor = null;
+        if (slice.hasNext() && !slice.getContent().isEmpty()) {
+            File last = slice.getContent().get(slice.getContent().size() - 1);
+            String lastSortValue = "updatedAt".equals(sortField)
+                    ? last.getUpdatedAt().toString()
+                    : last.getName();
+            nextCursor = encodeCursor(new FileCursor(sortField, sortDir, last.isDirectory(), lastSortValue, last.getId().toString()));
+        }
+
+        return new CursorPageResponse<>(
+                slice.getContent().stream().map(FileResponse::from).toList(),
+                nextCursor,
+                slice.hasNext()
+        );
+    }
+
+    private Slice<File> fetchByCursor(UUID ownerId, UUID parentId, FileCursor fc, Pageable p) {
+        boolean isDir = fc.lastIsDir();
+        UUID lastId = UUID.fromString(fc.lastId());
+
+        return switch (fc.sortField() + ":" + fc.sortDir()) {
+            case "name:asc" -> parentId != null
+                    ? fileRepository.findCursorNameAscByParentId(ownerId, parentId, isDir, fc.lastSortValue(), lastId, p)
+                    : fileRepository.findCursorNameAscRoot(ownerId, isDir, fc.lastSortValue(), lastId, p);
+            case "name:desc" -> parentId != null
+                    ? fileRepository.findCursorNameDescByParentId(ownerId, parentId, isDir, fc.lastSortValue(), lastId, p)
+                    : fileRepository.findCursorNameDescRoot(ownerId, isDir, fc.lastSortValue(), lastId, p);
+            case "updatedAt:asc" -> {
+                Instant t = Instant.parse(fc.lastSortValue());
+                yield parentId != null
+                        ? fileRepository.findCursorUpdatedAtAscByParentId(ownerId, parentId, isDir, t, lastId, p)
+                        : fileRepository.findCursorUpdatedAtAscRoot(ownerId, isDir, t, lastId, p);
+            }
+            case "updatedAt:desc" -> {
+                Instant t = Instant.parse(fc.lastSortValue());
+                yield parentId != null
+                        ? fileRepository.findCursorUpdatedAtDescByParentId(ownerId, parentId, isDir, t, lastId, p)
+                        : fileRepository.findCursorUpdatedAtDescRoot(ownerId, isDir, t, lastId, p);
+            }
+            default -> throw new StorageException("Unsupported sort combination: " + fc.sortField() + " " + fc.sortDir());
+        };
+    }
+
+    private static String encodeCursor(FileCursor cursor) {
+        try {
+            byte[] json = CHUNK_SESSION_JSON.writeValueAsBytes(cursor);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(json);
+        } catch (Exception ex) {
+            throw new StorageException("Failed to encode cursor", ex);
+        }
+    }
+
+    private static FileCursor decodeCursor(String encoded) {
+        try {
+            byte[] json = Base64.getUrlDecoder().decode(encoded);
+            return CHUNK_SESSION_JSON.readValue(json, FileCursor.class);
+        } catch (Exception ex) {
+            throw new StorageException("Invalid pagination cursor");
+        }
+    }
+
+    // ---- ETag for folder listings ----
+
+    public String getFolderETag(UUID ownerId, UUID parentId) {
+        Instant maxUpdatedAt = parentId != null
+                ? fileRepository.findMaxUpdatedAtByOwnerIdAndParentId(ownerId, parentId).orElse(Instant.EPOCH)
+                : fileRepository.findMaxUpdatedAtByOwnerIdAndParentIsNull(ownerId).orElse(Instant.EPOCH);
+        return "\"" + ownerId + ":" + (parentId != null ? parentId : "root") + ":" + maxUpdatedAt.toEpochMilli() + "\"";
+    }
+
     private Path thumbnailsDir() {
         return Path.of(uploadRootPath, ".thumbnails");
     }
@@ -1087,7 +1202,8 @@ public class FileService {
             byte[] content,
             long lastModifiedEpochMs,
             String eTag
-    ) {
+    ) implements java.io.Serializable {
+        private static final long serialVersionUID = 1L;
     }
 
     private record ThumbnailBinary(byte[] content, String contentType) {

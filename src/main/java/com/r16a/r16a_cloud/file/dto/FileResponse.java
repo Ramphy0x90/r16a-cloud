@@ -1,5 +1,6 @@
 package com.r16a.r16a_cloud.file.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.r16a.r16a_cloud.file.File;
 import com.r16a.r16a_cloud.file.Visibility;
 import com.r16a.r16a_cloud.user.User;
@@ -14,7 +15,7 @@ public record FileResponse(
         String name,
         String description,
         String fsPath,
-        boolean isDirectory,
+        @JsonProperty("isDirectory") boolean isDirectory,
         Visibility visibility,
         UUID parentId,
         UUID ownerId,

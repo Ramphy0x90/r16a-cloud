@@ -1,6 +1,7 @@
 package com.r16a.r16a_cloud.file;
 
 import com.r16a.r16a_cloud.file.dto.*;
+import com.r16a.r16a_cloud.file.dto.CursorPageResponse;
 import com.r16a.r16a_cloud.user.User;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -105,12 +106,26 @@ public class FileController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<FileResponse>> getFiles(
+    public ResponseEntity<CursorPageResponse<FileResponse>> getFiles(
             @RequestParam UUID ownerId,
             @RequestParam(required = false) UUID parentId,
-            Pageable pageable
+            @RequestParam(defaultValue = "name") String sort,
+            @RequestParam(defaultValue = "asc") String dir,
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(required = false) String cursor,
+            WebRequest webRequest
     ) {
-        return ResponseEntity.ok(fileService.getFiles(ownerId, parentId, pageable));
+        String eTag = fileService.getFolderETag(ownerId, parentId);
+        if (webRequest.checkNotModified(eTag)) {
+            return ResponseEntity.status(HttpStatus.NOT_MODIFIED).build();
+        }
+
+        int clampedLimit = Math.max(1, Math.min(200, limit));
+        CursorPageResponse<FileResponse> page = fileService.getFilesCursorPage(ownerId, parentId, sort, dir, cursor, clampedLimit);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noCache())
+                .eTag(eTag)
+                .body(page);
     }
 
     @GetMapping("/shared-with-me")
