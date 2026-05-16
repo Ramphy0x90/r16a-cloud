@@ -26,6 +26,7 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -156,7 +157,7 @@ public class FileController {
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<byte[]> downloadFile(@PathVariable UUID id) {
+    public ResponseEntity<StreamingResponseBody> downloadFile(@PathVariable UUID id) {
         FileService.DownloadPayload payload = fileService.downloadSingle(id);
         return buildDownloadResponse(payload);
     }
@@ -183,21 +184,26 @@ public class FileController {
     }
 
     @PostMapping("/download")
-    public ResponseEntity<byte[]> downloadFiles(@Valid @RequestBody DownloadFilesRequest request) {
+    public ResponseEntity<StreamingResponseBody> downloadFiles(@Valid @RequestBody DownloadFilesRequest request) {
         FileService.DownloadPayload payload = fileService.downloadMultiple(request.ids());
         return buildDownloadResponse(payload);
     }
 
-    private ResponseEntity<byte[]> buildDownloadResponse(FileService.DownloadPayload payload) {
+    private ResponseEntity<StreamingResponseBody> buildDownloadResponse(FileService.DownloadPayload payload) {
         String contentDisposition = org.springframework.http.ContentDisposition
                 .attachment()
                 .filename(payload.fileName(), StandardCharsets.UTF_8)
                 .build()
                 .toString();
 
-        return ResponseEntity.ok()
+        ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(payload.contentType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
-                .body(payload.content());
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition);
+
+        if (payload.contentLength() >= 0) {
+            builder = builder.contentLength(payload.contentLength());
+        }
+
+        return builder.body(payload.body());
     }
 }

@@ -16,6 +16,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import tools.jackson.databind.json.JsonMapper;
 
 import javax.imageio.ImageIO;
@@ -463,12 +464,7 @@ public class FileService {
             return buildSingleFilePayload(file);
         }
 
-        byte[] content = zipFiles(List.of(file));
-        return new DownloadPayload(
-                file.getName() + ".zip",
-                "application/zip",
-                content
-        );
+        return new DownloadPayload(file.getName() + ".zip", "application/zip", zipFiles(List.of(file)), -1);
     }
 
     public DownloadPayload downloadMultiple(List<UUID> ids) {
@@ -481,12 +477,8 @@ public class FileService {
             return buildSingleFilePayload(files.get(0));
         }
 
-        byte[] content = zipFiles(files);
-        return new DownloadPayload(
-                "download_" + Instant.now().toEpochMilli() + ".zip",
-                "application/zip",
-                content
-        );
+        String zipName = "download_" + Instant.now().toEpochMilli() + ".zip";
+        return new DownloadPayload(zipName, "application/zip", zipFiles(files), -1);
     }
 
     public ThumbnailPayload downloadThumbnail(UUID id, ThumbnailSize size) {
@@ -830,46 +822,57 @@ public class FileService {
     private DownloadPayload buildSingleFilePayload(File file) {
         Path path = Path.of(file.getFsPath());
 
-        try {
-            if (!Files.exists(path) || Files.isDirectory(path)) {
-                throw new StorageException("File content is unavailable: " + file.getName());
-            }
-
-            byte[] content = Files.readAllBytes(path);
-            String contentType = Files.probeContentType(path);
-            if (contentType == null || contentType.isBlank()) {
-                contentType = "application/octet-stream";
-            }
-
-            return new DownloadPayload(file.getName(), contentType, content);
-        } catch (IOException ex) {
-            throw new StorageException("Failed to read file for download: " + file.getName(), ex);
+        if (!Files.exists(path) || Files.isDirectory(path)) {
+            throw new StorageException("File content is unavailable: " + file.getName());
         }
+
+        String contentType;
+        long contentLength;
+        try {
+            contentType = Files.probeContentType(path);
+            contentLength = Files.size(path);
+        } catch (IOException ex) {
+            throw new StorageException("Failed to read file metadata for download: " + file.getName(), ex);
+        }
+
+        if (contentType == null || contentType.isBlank()) {
+            contentType = "application/octet-stream";
+        }
+
+        StreamingResponseBody body = outputStream -> {
+            try {
+                Files.copy(path, outputStream);
+            } catch (IOException ex) {
+                throw new StorageException("Failed to stream file: " + file.getName(), ex);
+            }
+        };
+
+        return new DownloadPayload(file.getName(), contentType, body, contentLength);
     }
 
-    private byte[] zipFiles(List<File> files) {
-        try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-             ZipOutputStream zipOut = new ZipOutputStream(byteOut)) {
-            Set<String> usedRootNames = new LinkedHashSet<>();
-            for (File file : files) {
-                Path source = Path.of(file.getFsPath());
-                if (!Files.exists(source)) {
-                    throw new StorageException("Source path not found for download: " + source);
+    private StreamingResponseBody zipFiles(List<File> files) {
+        return outputStream -> {
+            try (ZipOutputStream zipOut = new ZipOutputStream(outputStream)) {
+                Set<String> usedRootNames = new LinkedHashSet<>();
+                for (File file : files) {
+                    Path source = Path.of(file.getFsPath());
+                    if (!Files.exists(source)) {
+                        throw new StorageException("Source path not found for download: " + source);
+                    }
+
+                    String rootName = uniqueRootName(file.getName(), usedRootNames);
+                    if (Files.isDirectory(source)) {
+                        zipDirectory(zipOut, source, rootName);
+                    } else {
+                        zipRegularFile(zipOut, source, rootName);
+                    }
                 }
 
-                String rootName = uniqueRootName(file.getName(), usedRootNames);
-                if (Files.isDirectory(source)) {
-                    zipDirectory(zipOut, source, rootName);
-                } else {
-                    zipRegularFile(zipOut, source, rootName);
-                }
+                zipOut.finish();
+            } catch (IOException ex) {
+                throw new StorageException("Failed to build zip for download.", ex);
             }
-
-            zipOut.finish();
-            return byteOut.toByteArray();
-        } catch (IOException ex) {
-            throw new StorageException("Failed to build zip for download.", ex);
-        }
+        };
     }
 
     private void zipDirectory(ZipOutputStream zipOut, Path directoryPath, String rootName) throws IOException {
@@ -985,7 +988,7 @@ public class FileService {
         };
     }
 
-    public record DownloadPayload(String fileName, String contentType, byte[] content) {
+    public record DownloadPayload(String fileName, String contentType, StreamingResponseBody body, long contentLength) {
     }
 
     public record ThumbnailPayload(

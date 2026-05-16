@@ -17,7 +17,15 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "files")
+@Table(
+    name = "files",
+    indexes = {
+        // Covers directory listing sorted by name (most common query)
+        @Index(name = "idx_files_listing_name", columnList = "owner_id, parent_id, isDirectory DESC, name"),
+        // Covers directory listing sorted by last modified
+        @Index(name = "idx_files_listing_modified", columnList = "owner_id, parent_id, isDirectory DESC, updatedAt DESC, id")
+    }
+)
 public class File {
 
     @Id
