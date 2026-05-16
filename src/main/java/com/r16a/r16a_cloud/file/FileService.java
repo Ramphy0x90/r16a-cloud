@@ -53,6 +53,8 @@ public class FileService {
 
     private final FileRepository fileRepository;
     private final UserRepository userRepository;
+    private final FileEventRepository fileEventRepository;
+    private final DownloadTokenService downloadTokenService;
 
     @Value("${app.upload.path}")
     private String uploadRootPath;
@@ -152,7 +154,9 @@ public class FileService {
                 .build();
 
         try {
-            return FileResponse.from(fileRepository.save(file));
+            FileResponse response = FileResponse.from(fileRepository.save(file));
+            recordEvent(file, FileEventType.CREATED);
+            return response;
         } catch (RuntimeException ex) {
             rollbackFsEntry(targetPath);
             throw ex;
@@ -194,7 +198,9 @@ public class FileService {
                 .build();
 
         try {
-            return FileResponse.from(fileRepository.save(file));
+            FileResponse response = FileResponse.from(fileRepository.save(file));
+            recordEvent(file, FileEventType.CREATED);
+            return response;
         } catch (RuntimeException ex) {
             rollbackFsEntry(targetPath);
             throw ex;
@@ -454,7 +460,9 @@ public class FileService {
             file.setSharedWith(resolveUsers(request.sharedWithIds()));
         }
 
-        return FileResponse.from(fileRepository.save(file));
+        FileResponse response = FileResponse.from(fileRepository.save(file));
+        recordEvent(file, FileEventType.UPDATED);
+        return response;
     }
 
     @Transactional
@@ -473,6 +481,7 @@ public class FileService {
     })
     public void deleteFile(UUID id) {
         File file = findFileOrThrow(id);
+        recordEvent(file, FileEventType.DELETED);
         deleteFsEntry(Path.of(file.getFsPath()));
         deleteThumbnailCache(id);
         deleteFromDbRecursively(file);
@@ -1048,6 +1057,54 @@ public class FileService {
     }
 
     // ---- ETag for folder listings ----
+
+    // ── Download tokens ───────────────────────────────────────────────────────
+
+    public String generateDownloadToken(UUID fileId, UUID requesterId) {
+        findFileOrThrow(fileId); // verify file exists
+        return downloadTokenService.generateToken(fileId, requesterId);
+    }
+
+    public DownloadPayload downloadByToken(String token) {
+        UUID fileId = downloadTokenService.validateToken(token);
+        return downloadSingle(fileId);
+    }
+
+    // ── File event changelog ──────────────────────────────────────────────────
+
+    private void recordEvent(File file, FileEventType type) {
+        try {
+            FileEvent event = FileEvent.builder()
+                    .ownerId(file.getOwner().getId())
+                    .parentId(file.getParent() != null ? file.getParent().getId() : null)
+                    .fileId(file.getId())
+                    .fileName(file.getName())
+                    .eventType(type)
+                    .occurredAt(Instant.now())
+                    .build();
+            fileEventRepository.save(event);
+        } catch (Exception ex) {
+            log.warn("Failed to record file event for {} ({}): {}", file.getId(), type, ex.getMessage());
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public FileEventsResponse getEventsSince(UUID ownerId, long sinceEpochMs, int limit) {
+        Instant since = Instant.ofEpochMilli(sinceEpochMs);
+        Pageable p = PageRequest.of(0, Math.min(limit, 500));
+        Slice<FileEvent> slice = fileEventRepository
+                .findByOwnerIdAndOccurredAtGreaterThanOrderByOccurredAtAsc(ownerId, since, p);
+
+        List<FileEventDto> events = slice.getContent().stream()
+                .map(FileEventDto::from)
+                .toList();
+
+        long nextCursor = slice.getContent().isEmpty()
+                ? sinceEpochMs
+                : slice.getContent().get(slice.getContent().size() - 1).getOccurredAt().toEpochMilli();
+
+        return new FileEventsResponse(events, nextCursor, slice.hasNext());
+    }
 
     public String getFolderETag(UUID ownerId, UUID parentId) {
         Instant maxUpdatedAt = parentId != null
