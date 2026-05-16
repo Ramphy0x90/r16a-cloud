@@ -50,6 +50,11 @@ spec:
                 secretKeyRef:
                   name: r16a-cloud-secret
                   key: JWT_SECRET
+            - name: DOWNLOAD_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: r16a-cloud-secret
+                  key: DOWNLOAD_TOKEN_SECRET
           volumeMounts:
             - name: uploads
               mountPath: /app/uploads
