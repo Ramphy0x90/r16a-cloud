@@ -45,6 +45,11 @@ spec:
                 secretKeyRef:
                   name: r16a-cloud-secret
                   key: REDIS_HOST
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: r16a-cloud-secret
+                  key: REDIS_PASSWORD
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
