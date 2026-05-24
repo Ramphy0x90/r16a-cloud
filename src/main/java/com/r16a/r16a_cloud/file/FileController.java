@@ -35,6 +35,7 @@ public class FileController {
     private final FileService fileService;
     private final ThumbnailService thumbnailService;
     private final ChunkedUploadService chunkedUploadService;
+    private final FileCursorService fileCursorService;
 
     @PostMapping
     public ResponseEntity<FileResponse> createFile(@Valid @RequestBody CreateFileRequest request) {
@@ -123,7 +124,7 @@ public class FileController {
         }
 
         int clampedLimit = Math.max(1, Math.min(200, limit));
-        CursorPageResponse<FileResponse> page = fileService.getFilesCursorPage(ownerId, parentId, sort, dir, cursor, clampedLimit);
+        CursorPageResponse<FileResponse> page = fileCursorService.getFilesCursorPage(ownerId, parentId, sort, dir, cursor, clampedLimit);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noCache())
                 .eTag(eTag)
