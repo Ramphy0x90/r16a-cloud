@@ -33,6 +33,7 @@ import java.util.UUID;
 public class FileController {
 
     private final FileService fileService;
+    private final ThumbnailService thumbnailService;
 
     @PostMapping
     public ResponseEntity<FileResponse> createFile(@Valid @RequestBody CreateFileRequest request) {
@@ -182,8 +183,8 @@ public class FileController {
             @RequestParam(defaultValue = "small") String size,
             WebRequest webRequest
     ) {
-        FileService.ThumbnailSize thumbnailSize = FileService.ThumbnailSize.fromQueryValue(size);
-        FileService.ThumbnailPayload payload = fileService.downloadThumbnail(id, thumbnailSize);
+        ThumbnailService.ThumbnailSize thumbnailSize = ThumbnailService.ThumbnailSize.fromQueryValue(size);
+        ThumbnailService.ThumbnailPayload payload = thumbnailService.downloadThumbnail(id, thumbnailSize);
 
         if (webRequest.checkNotModified(payload.eTag(), payload.lastModifiedEpochMs())) {
             return ResponseEntity.status(HttpStatus.NOT_MODIFIED).build();

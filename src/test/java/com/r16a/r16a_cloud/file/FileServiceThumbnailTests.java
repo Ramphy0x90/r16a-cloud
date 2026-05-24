@@ -1,12 +1,12 @@
 package com.r16a.r16a_cloud.file;
 
 import com.r16a.r16a_cloud.exception.StorageException;
-import com.r16a.r16a_cloud.user.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -27,11 +27,14 @@ class FileServiceThumbnailTests {
     @Mock
     private FileRepository fileRepository;
 
-    @Mock
-    private UserRepository userRepository;
-
     @TempDir
     Path tempDir;
+
+    private ThumbnailService buildService() {
+        ThumbnailService service = new ThumbnailService(fileRepository);
+        ReflectionTestUtils.setField(service, "uploadRootPath", tempDir.toString());
+        return service;
+    }
 
     @Test
     void downloadThumbnail_resizesLargeImage() throws Exception {
@@ -51,8 +54,8 @@ class FileServiceThumbnailTests {
 
         when(fileRepository.findById(fileId)).thenReturn(Optional.of(file));
 
-        FileService service = new FileService(fileRepository, userRepository);
-        FileService.ThumbnailPayload payload = service.downloadThumbnail(fileId, FileService.ThumbnailSize.SMALL);
+        ThumbnailService service = buildService();
+        ThumbnailService.ThumbnailPayload payload = service.downloadThumbnail(fileId, ThumbnailService.ThumbnailSize.SMALL);
 
         assertNotNull(payload);
         assertTrue(payload.contentType().startsWith("image/"));
@@ -81,9 +84,9 @@ class FileServiceThumbnailTests {
 
         when(fileRepository.findById(fileId)).thenReturn(Optional.of(file));
 
-        FileService service = new FileService(fileRepository, userRepository);
+        ThumbnailService service = buildService();
         assertThrows(StorageException.class, () ->
-                service.downloadThumbnail(fileId, FileService.ThumbnailSize.SMALL)
+                service.downloadThumbnail(fileId, ThumbnailService.ThumbnailSize.SMALL)
         );
     }
 }
