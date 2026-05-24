@@ -60,6 +60,7 @@ jobs:
                       --enableRetired
               env:
                   NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+                  JAVA_HOME: ""
 
             - name: Upload OWASP report
               uses: actions/upload-artifact@v4
