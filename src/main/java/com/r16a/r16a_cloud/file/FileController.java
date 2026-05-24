@@ -1,6 +1,9 @@
 package com.r16a.r16a_cloud.file;
 
 import com.r16a.r16a_cloud.file.dto.*;
+import com.r16a.r16a_cloud.file.support.ChunkedUploadService;
+import com.r16a.r16a_cloud.file.support.FileCursorService;
+import com.r16a.r16a_cloud.file.support.ThumbnailService;
 import com.r16a.r16a_cloud.user.User;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

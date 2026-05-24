@@ -1,7 +1,9 @@
-package com.r16a.r16a_cloud.file;
+package com.r16a.r16a_cloud.file.support;
 
 import com.r16a.r16a_cloud.exception.ResourceNotFoundException;
 import com.r16a.r16a_cloud.exception.StorageException;
+import com.r16a.r16a_cloud.file.File;
+import com.r16a.r16a_cloud.file.FileRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -95,7 +97,7 @@ public class ThumbnailService {
         }
     }
 
-    String computeBlurHash(Path path) {
+    public String computeBlurHash(Path path) {
         String contentType;
         try {
             contentType = Files.probeContentType(path);
@@ -117,7 +119,7 @@ public class ThumbnailService {
         }
     }
 
-    void deleteThumbnailCache(UUID fileId) {
+    public void deleteThumbnailCache(UUID fileId) {
         Path dir = thumbnailsDir();
         if (!Files.isDirectory(dir)) return;
         String prefix = fileId.toString();

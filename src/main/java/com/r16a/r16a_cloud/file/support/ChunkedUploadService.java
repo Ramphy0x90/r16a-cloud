@@ -1,8 +1,14 @@
-package com.r16a.r16a_cloud.file;
+package com.r16a.r16a_cloud.file.support;
 
 import com.r16a.r16a_cloud.exception.ResourceAlreadyExistsException;
 import com.r16a.r16a_cloud.exception.ResourceNotFoundException;
 import com.r16a.r16a_cloud.exception.StorageException;
+import com.r16a.r16a_cloud.file.File;
+import com.r16a.r16a_cloud.file.FileEvent;
+import com.r16a.r16a_cloud.file.FileEventRepository;
+import com.r16a.r16a_cloud.file.FileEventType;
+import com.r16a.r16a_cloud.file.FileRepository;
+import com.r16a.r16a_cloud.file.Visibility;
 import com.r16a.r16a_cloud.file.dto.*;
 import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;

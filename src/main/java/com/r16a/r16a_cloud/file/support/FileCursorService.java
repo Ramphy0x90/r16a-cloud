@@ -1,7 +1,9 @@
-package com.r16a.r16a_cloud.file;
+package com.r16a.r16a_cloud.file.support;
 
 import com.r16a.r16a_cloud.exception.ResourceNotFoundException;
 import com.r16a.r16a_cloud.exception.StorageException;
+import com.r16a.r16a_cloud.file.File;
+import com.r16a.r16a_cloud.file.FileRepository;
 import com.r16a.r16a_cloud.file.dto.CursorPageResponse;
 import com.r16a.r16a_cloud.file.dto.FileResponse;
 import com.r16a.r16a_cloud.user.UserRepository;

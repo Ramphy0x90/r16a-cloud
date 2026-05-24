@@ -1,6 +1,7 @@
 package com.r16a.r16a_cloud.file;
 
 import com.r16a.r16a_cloud.exception.StorageException;
+import com.r16a.r16a_cloud.file.support.ThumbnailService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;

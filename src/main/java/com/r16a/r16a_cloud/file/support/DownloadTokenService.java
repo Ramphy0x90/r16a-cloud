@@ -1,4 +1,4 @@
-package com.r16a.r16a_cloud.file;
+package com.r16a.r16a_cloud.file.support;
 
 import com.r16a.r16a_cloud.exception.StorageException;
 import org.springframework.beans.factory.annotation.Value;
