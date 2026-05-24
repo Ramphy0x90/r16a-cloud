@@ -74,6 +74,77 @@ public interface FileRepository extends JpaRepository<File, UUID> {
     @Query("SELECT MAX(f.updatedAt) FROM File f WHERE f.owner.id = :ownerId AND f.parent IS NULL")
     Optional<Instant> findMaxUpdatedAtByOwnerIdAndParentIsNull(@Param("ownerId") UUID ownerId);
 
+    // ── Photos (media files grouped by year) ─────────────────────────────────
+
+    @Query("""
+            SELECT extract(year from f.createdAt), COUNT(f)
+            FROM File f
+            WHERE f.owner.id = :ownerId
+              AND f.isDirectory = false
+              AND (
+                LOWER(f.name) LIKE '%.jpg' OR LOWER(f.name) LIKE '%.jpeg' OR
+                LOWER(f.name) LIKE '%.png' OR LOWER(f.name) LIKE '%.gif' OR
+                LOWER(f.name) LIKE '%.webp' OR LOWER(f.name) LIKE '%.bmp' OR
+                LOWER(f.name) LIKE '%.avif' OR LOWER(f.name) LIKE '%.svg' OR
+                LOWER(f.name) LIKE '%.heic' OR LOWER(f.name) LIKE '%.heif' OR
+                LOWER(f.name) LIKE '%.mp4' OR LOWER(f.name) LIKE '%.mov' OR
+                LOWER(f.name) LIKE '%.avi' OR LOWER(f.name) LIKE '%.mkv' OR
+                LOWER(f.name) LIKE '%.webm' OR LOWER(f.name) LIKE '%.m4v'
+              )
+            GROUP BY extract(year from f.createdAt)
+            ORDER BY extract(year from f.createdAt) DESC
+            """)
+    List<Object[]> findMediaYearCounts(@Param("ownerId") UUID ownerId);
+
+    @Query("""
+            SELECT f FROM File f
+            WHERE f.owner.id = :ownerId
+              AND f.isDirectory = false
+              AND f.createdAt >= :yearStart AND f.createdAt < :yearEnd
+              AND (
+                LOWER(f.name) LIKE '%.jpg' OR LOWER(f.name) LIKE '%.jpeg' OR
+                LOWER(f.name) LIKE '%.png' OR LOWER(f.name) LIKE '%.gif' OR
+                LOWER(f.name) LIKE '%.webp' OR LOWER(f.name) LIKE '%.bmp' OR
+                LOWER(f.name) LIKE '%.avif' OR LOWER(f.name) LIKE '%.svg' OR
+                LOWER(f.name) LIKE '%.heic' OR LOWER(f.name) LIKE '%.heif' OR
+                LOWER(f.name) LIKE '%.mp4' OR LOWER(f.name) LIKE '%.mov' OR
+                LOWER(f.name) LIKE '%.avi' OR LOWER(f.name) LIKE '%.mkv' OR
+                LOWER(f.name) LIKE '%.webm' OR LOWER(f.name) LIKE '%.m4v'
+              )
+            ORDER BY f.createdAt DESC, f.id ASC
+            """)
+    Slice<File> findMediaForYear(
+            @Param("ownerId") UUID ownerId,
+            @Param("yearStart") Instant yearStart,
+            @Param("yearEnd") Instant yearEnd,
+            Pageable pageable);
+
+    @Query("""
+            SELECT f FROM File f
+            WHERE f.owner.id = :ownerId
+              AND f.isDirectory = false
+              AND f.createdAt >= :yearStart AND f.createdAt < :yearEnd
+              AND (f.createdAt < :lastCreatedAt OR (f.createdAt = :lastCreatedAt AND f.id > :lastId))
+              AND (
+                LOWER(f.name) LIKE '%.jpg' OR LOWER(f.name) LIKE '%.jpeg' OR
+                LOWER(f.name) LIKE '%.png' OR LOWER(f.name) LIKE '%.gif' OR
+                LOWER(f.name) LIKE '%.webp' OR LOWER(f.name) LIKE '%.bmp' OR
+                LOWER(f.name) LIKE '%.avif' OR LOWER(f.name) LIKE '%.svg' OR
+                LOWER(f.name) LIKE '%.heic' OR LOWER(f.name) LIKE '%.heif' OR
+                LOWER(f.name) LIKE '%.mp4' OR LOWER(f.name) LIKE '%.mov' OR
+                LOWER(f.name) LIKE '%.avi' OR LOWER(f.name) LIKE '%.mkv' OR
+                LOWER(f.name) LIKE '%.webm' OR LOWER(f.name) LIKE '%.m4v'
+              )
+            ORDER BY f.createdAt DESC, f.id ASC
+            """)
+    Slice<File> findMediaForYearCursor(
+            @Param("ownerId") UUID ownerId,
+            @Param("yearStart") Instant yearStart,
+            @Param("yearEnd") Instant yearEnd,
+            @Param("lastCreatedAt") Instant lastCreatedAt,
+            @Param("lastId") UUID lastId,
+            Pageable pageable);
+
     // --- Keyset cursor queries: name ASC ---
 
     @Query("""

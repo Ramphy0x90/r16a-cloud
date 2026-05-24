@@ -64,7 +64,9 @@ public class ThumbnailService {
 
         if (contentType == null || contentType.isBlank()) contentType = "application/octet-stream";
         if (!contentType.startsWith("image/")) {
-            throw new StorageException("Thumbnails are only supported for image files.");
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Thumbnails are only supported for image files.");
         }
 
         long lastModifiedEpochMs = file.getUpdatedAt().toEpochMilli();
