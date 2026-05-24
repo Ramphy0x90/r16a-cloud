@@ -6,6 +6,7 @@ import com.r16a.r16a_cloud.exception.StorageException;
 import com.r16a.r16a_cloud.file.dto.*;
 import com.r16a.r16a_cloud.file.support.DownloadTokenService;
 import com.r16a.r16a_cloud.file.support.FileZipService;
+import com.r16a.r16a_cloud.file.support.MediaDateExtractor;
 import com.r16a.r16a_cloud.file.support.ThumbnailService;
 import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;
@@ -40,6 +41,7 @@ public class FileService {
     private final DownloadTokenService downloadTokenService;
     private final ThumbnailService thumbnailService;
     private final FileZipService fileZipService;
+    private final MediaDateExtractor mediaDateExtractor;
 
     @Value("${app.upload.path}")
     private String uploadRootPath;
@@ -155,7 +157,7 @@ public class FileService {
         writeUploadedFile(upload, targetPath);
 
         String blurHash = thumbnailService.computeBlurHash(targetPath);
-        java.time.Instant takenAt = thumbnailService.extractTakenAt(targetPath);
+        java.time.Instant takenAt = mediaDateExtractor.extractOldestDate(targetPath);
 
         File file = File.builder()
                 .name(fileName)

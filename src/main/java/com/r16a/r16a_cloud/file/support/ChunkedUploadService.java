@@ -42,6 +42,7 @@ public class ChunkedUploadService {
     private final UserRepository userRepository;
     private final FileEventRepository fileEventRepository;
     private final ThumbnailService thumbnailService;
+    private final MediaDateExtractor mediaDateExtractor;
 
     @Value("${app.upload.path}")
     private String uploadRootPath;
@@ -193,7 +194,7 @@ public class ChunkedUploadService {
         }
 
         String blurHash = thumbnailService.computeBlurHash(targetPath);
-        Instant takenAt = thumbnailService.extractTakenAt(targetPath);
+        Instant takenAt = mediaDateExtractor.extractOldestDate(targetPath);
 
         Set<UUID> sharedWithIds = session.sharedWithIds() != null ? session.sharedWithIds() : Set.of();
         File file = File.builder()

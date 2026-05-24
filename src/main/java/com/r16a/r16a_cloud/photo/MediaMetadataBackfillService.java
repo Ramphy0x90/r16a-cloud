@@ -1,7 +1,7 @@
 package com.r16a.r16a_cloud.photo;
 
 import com.r16a.r16a_cloud.file.FileRepository;
-import com.r16a.r16a_cloud.file.support.ThumbnailService;
+import com.r16a.r16a_cloud.file.support.MediaDateExtractor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -19,7 +19,7 @@ import java.util.UUID;
 public class MediaMetadataBackfillService {
 
     private final FileRepository fileRepository;
-    private final ThumbnailService thumbnailService;
+    private final MediaDateExtractor mediaDateExtractor;
 
     @EventListener(ApplicationReadyEvent.class)
     public void scheduleBackfill() {
@@ -36,7 +36,7 @@ public class MediaMetadataBackfillService {
         for (UUID id : ids) {
             try {
                 fileRepository.findById(id).ifPresent(file -> {
-                    Instant takenAt = thumbnailService.extractTakenAt(Path.of(file.getFsPath()));
+                    Instant takenAt = mediaDateExtractor.extractOldestDate(Path.of(file.getFsPath()));
                     if (takenAt != null) {
                         fileRepository.updateTakenAt(file.getId(), takenAt);
                     }
