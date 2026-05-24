@@ -1,8 +1,6 @@
 package com.r16a.r16a_cloud.file;
 
 import com.r16a.r16a_cloud.file.dto.*;
-import com.r16a.r16a_cloud.file.dto.CursorPageResponse;
-import com.r16a.r16a_cloud.file.dto.FileEventsResponse;
 import com.r16a.r16a_cloud.user.User;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -205,7 +203,9 @@ public class FileController {
         return buildDownloadResponse(payload);
     }
 
-    /** Issues a short-lived (5 min) signed download token for a single file. */
+    /**
+     * Issues a short-lived (5 min) signed download token for a single file.
+     */
     @GetMapping("/{id}/download-token")
     public ResponseEntity<Map<String, String>> getDownloadToken(
             @PathVariable UUID id,
@@ -215,7 +215,9 @@ public class FileController {
         return ResponseEntity.ok(Map.of("token", token));
     }
 
-    /** Token-authenticated download — no bearer token required (used for direct browser links). */
+    /**
+     * Token-authenticated download — no bearer token required (used for direct browser links).
+     */
     @GetMapping("/download/token")
     public ResponseEntity<StreamingResponseBody> downloadByToken(
             @RequestParam String token,
@@ -228,7 +230,9 @@ public class FileController {
         return buildDownloadResponse(payload);
     }
 
-    /** Returns file events since the given epoch-ms cursor for delta sync. */
+    /**
+     * Returns file events since the given epoch-ms cursor for delta sync.
+     */
     @GetMapping("/events")
     public ResponseEntity<FileEventsResponse> getEvents(
             @RequestParam UUID ownerId,

@@ -25,7 +25,9 @@ public class DownloadTokenService {
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
     }
 
-    /** Returns a base64url-encoded signed token valid for {@value TOKEN_TTL_SECONDS} seconds. */
+    /**
+     * Returns a base64url-encoded signed token valid for {@value TOKEN_TTL_SECONDS} seconds.
+     */
     public String generateToken(UUID fileId, UUID requesterId) {
         long expiresAt = Instant.now().getEpochSecond() + TOKEN_TTL_SECONDS;
         String payload = fileId + ":" + requesterId + ":" + expiresAt;
@@ -34,9 +36,12 @@ public class DownloadTokenService {
                 .encodeToString((payload + ":" + sig).getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Validates the token and returns the {@code fileId} it was issued for. */
+    /**
+     * Validates the token and returns the {@code fileId} it was issued for.
+     */
     public UUID validateToken(String token) {
         String decoded;
+
         try {
             decoded = new String(Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8);
         } catch (IllegalArgumentException ex) {
@@ -52,7 +57,7 @@ public class DownloadTokenService {
         String expectedSig = sign(payload);
 
         if (!MessageDigest.isEqual(expectedSig.getBytes(StandardCharsets.UTF_8),
-                                   providedSig.getBytes(StandardCharsets.UTF_8))) {
+                providedSig.getBytes(StandardCharsets.UTF_8))) {
             throw new StorageException("Invalid download token");
         }
 

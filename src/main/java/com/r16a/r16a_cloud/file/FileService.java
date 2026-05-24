@@ -4,7 +4,6 @@ import com.r16a.r16a_cloud.exception.ResourceAlreadyExistsException;
 import com.r16a.r16a_cloud.exception.ResourceNotFoundException;
 import com.r16a.r16a_cloud.exception.StorageException;
 import com.r16a.r16a_cloud.file.dto.*;
-import com.r16a.r16a_cloud.file.dto.CursorPageResponse;
 import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;
 import jakarta.annotation.PostConstruct;
@@ -14,11 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Slice;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +32,6 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Base64;
 import java.util.*;
 import java.util.List;
 import java.util.stream.Stream;
@@ -215,9 +209,6 @@ public class FileService {
         if (request.totalSize() < 0) {
             throw new StorageException("totalSize must be non-negative.");
         }
-
-        User owner = userRepository.findById(request.ownerId())
-                .orElseThrow(() -> new ResourceNotFoundException("User", "id", request.ownerId()));
 
         String fileName = sanitizeFilenameFromString(request.fileName());
         File parent = resolveParentForOwner(request.parentId(), request.ownerId());
@@ -476,8 +467,8 @@ public class FileService {
 
     @Transactional
     @Caching(evict = {
-        @CacheEvict(value = "thumbnails", key = "#id + ':small'"),
-        @CacheEvict(value = "thumbnails", key = "#id + ':medium'")
+            @CacheEvict(value = "thumbnails", key = "#id + ':small'"),
+            @CacheEvict(value = "thumbnails", key = "#id + ':medium'")
     })
     public void deleteFile(UUID id) {
         File file = findFileOrThrow(id);
@@ -965,7 +956,9 @@ public class FileService {
 
     // ---- Cursor pagination ----
 
-    private record FileCursor(String sortField, String sortDir, boolean lastIsDir, String lastSortValue, String lastId) {}
+    private record FileCursor(String sortField, String sortDir, boolean lastIsDir, String lastSortValue,
+                              String lastId) {
+    }
 
     @Transactional(readOnly = true)
     public CursorPageResponse<FileResponse> getFilesCursorPage(
@@ -1034,7 +1027,8 @@ public class FileService {
                         ? fileRepository.findCursorUpdatedAtDescByParentId(ownerId, parentId, isDir, t, lastId, p)
                         : fileRepository.findCursorUpdatedAtDescRoot(ownerId, isDir, t, lastId, p);
             }
-            default -> throw new StorageException("Unsupported sort combination: " + fc.sortField() + " " + fc.sortDir());
+            default ->
+                    throw new StorageException("Unsupported sort combination: " + fc.sortField() + " " + fc.sortDir());
         };
     }
 
@@ -1133,7 +1127,9 @@ public class FileService {
         try (Stream<Path> entries = Files.list(dir)) {
             entries.filter(p -> p.getFileName().toString().startsWith(prefix))
                     .forEach(p -> {
-                        try { Files.deleteIfExists(p); } catch (IOException ex) {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (IOException ex) {
                             log.warn("Failed to delete thumbnail cache file {}: {}", p, ex.getMessage());
                         }
                     });
@@ -1250,8 +1246,11 @@ public class FileService {
         };
     }
 
-    /** sourcePath is non-null for single files (enables range requests); null for zip archives. */
-    public record DownloadPayload(String fileName, String contentType, StreamingResponseBody body, long contentLength, Path sourcePath) {
+    /**
+     * sourcePath is non-null for single files (enables range requests); null for zip archives.
+     */
+    public record DownloadPayload(String fileName, String contentType, StreamingResponseBody body, long contentLength,
+                                  Path sourcePath) {
     }
 
     public record ThumbnailPayload(
