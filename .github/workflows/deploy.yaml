@@ -5,11 +5,8 @@ on:
         branches: [main]
 
 jobs:
-    build-and-deploy:
+    test:
         runs-on: self-hosted
-        environment: Deploy
-        env:
-            KUBECONFIG: /home/r16a-runner/.kube/config
 
         steps:
             - uses: actions/checkout@v4
@@ -20,9 +17,59 @@ jobs:
                   java-version: "21"
                   distribution: "temurin"
 
-            # TODO: Create and run tests
-            #- name: Run tests
-            #  run: ./gradlew test
+            - name: Run tests
+              run: ./gradlew test
+
+            - name: Upload test report
+              uses: actions/upload-artifact@v4
+              if: failure()
+              with:
+                  name: test-report
+                  path: build/reports/tests/test/
+
+    security:
+        runs-on: self-hosted
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: OWASP Dependency Check
+              uses: dependency-check/Dependency-Check_Action@main
+              with:
+                  project: "r16a-cloud"
+                  path: "."
+                  format: "HTML"
+                  args: >
+                      --failOnCVSS 7
+                      --enableRetired
+              env:
+                  NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+
+            - name: Upload OWASP report
+              uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: owasp-report
+                  path: reports/
+
+            - name: Trivy filesystem scan
+              uses: aquasecurity/trivy-action@master
+              with:
+                  scan-type: "fs"
+                  scan-ref: "."
+                  severity: "CRITICAL,HIGH"
+                  exit-code: "1"
+                  format: "table"
+
+    build-and-deploy:
+        needs: [test, security]
+        runs-on: self-hosted
+        environment: Deploy
+        env:
+            KUBECONFIG: /home/r16a-runner/.kube/config
+
+        steps:
+            - uses: actions/checkout@v4
 
             - name: Login private registry
               run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login registry.r16a.cloud -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
@@ -39,5 +86,5 @@ jobs:
 
             - name: Apply Kubernetes manifests
               run: |
-                  kubectl apply -f k8s/  # applies deployment, service, ingress, pvc
+                  kubectl apply -f k8s/
                   kubectl rollout status deployment/r16a-cloud -n r16a-cloud --timeout=120s
