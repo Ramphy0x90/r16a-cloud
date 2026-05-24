@@ -1,7 +1,8 @@
 package com.r16a.r16a_cloud.file;
 
-import com.r16a.r16a_cloud.exception.StorageException;
 import com.r16a.r16a_cloud.file.support.ThumbnailService;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -86,8 +87,9 @@ class FileServiceThumbnailTests {
         when(fileRepository.findById(fileId)).thenReturn(Optional.of(file));
 
         ThumbnailService service = buildService();
-        assertThrows(StorageException.class, () ->
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 service.downloadThumbnail(fileId, ThumbnailService.ThumbnailSize.SMALL)
         );
+        assertTrue(ex.getStatusCode().isSameCodeAs(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
     }
 }
