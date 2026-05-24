@@ -6,7 +6,7 @@ COPY gradle ./gradle
 COPY gradlew ./
 RUN ./gradlew dependencies --no-daemon || true
 COPY src ./src
-RUN ./gradlew clean build -x test -x spotbugsMain --no-daemon
+RUN ./gradlew clean build -x test -x spotbugsMain -x spotbugsTest --no-daemon
 
 # Runtime stage
 FROM eclipse-temurin:21-jre
