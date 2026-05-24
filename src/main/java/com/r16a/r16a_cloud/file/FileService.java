@@ -155,6 +155,7 @@ public class FileService {
         writeUploadedFile(upload, targetPath);
 
         String blurHash = thumbnailService.computeBlurHash(targetPath);
+        java.time.Instant takenAt = thumbnailService.extractTakenAt(targetPath);
 
         File file = File.builder()
                 .name(fileName)
@@ -167,6 +168,7 @@ public class FileService {
                 .owner(owner)
                 .sharedWith(resolveUsers(sharedWithIds))
                 .blurHash(blurHash)
+                .takenAt(takenAt)
                 .build();
 
         try {

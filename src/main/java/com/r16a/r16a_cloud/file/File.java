@@ -73,6 +73,9 @@ public class File {
     @Column(length = 100)
     private String blurHash;
 
+    /** EXIF DateTimeOriginal when available; null means fall back to createdAt for display. */
+    private Instant takenAt;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 

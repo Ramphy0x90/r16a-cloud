@@ -23,6 +23,7 @@ public record FileResponse(
         Set<UUID> sharedWithIds,
         Instant createdAt,
         Instant updatedAt,
+        Instant takenAt,
         String blurHash
 ) {
     public static FileResponse from(File file) {
@@ -39,6 +40,7 @@ public record FileResponse(
                 file.getSharedWith().stream().map(User::getId).collect(Collectors.toSet()),
                 file.getCreatedAt(),
                 file.getUpdatedAt(),
+                file.getTakenAt(),
                 file.getBlurHash()
         );
     }

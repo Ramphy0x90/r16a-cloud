@@ -60,14 +60,15 @@ public class PhotoService {
             PhotoCursor pc = decodeCursor(cursor);
             slice = fileRepository.findMediaForYearCursor(
                     ownerId, yearStart, yearEnd,
-                    Instant.parse(pc.lastCreatedAt()), UUID.fromString(pc.lastId()),
+                    Instant.parse(pc.lastMediaAt()), UUID.fromString(pc.lastId()),
                     PageRequest.of(0, clampedLimit));
         }
 
         String nextCursor = null;
         if (slice.hasNext() && !slice.getContent().isEmpty()) {
             File last = slice.getContent().get(slice.getContent().size() - 1);
-            nextCursor = encodeCursor(new PhotoCursor(last.getCreatedAt().toString(), last.getId().toString()));
+            Instant lastMediaAt = last.getTakenAt() != null ? last.getTakenAt() : last.getCreatedAt();
+            nextCursor = encodeCursor(new PhotoCursor(lastMediaAt.toString(), last.getId().toString()));
         }
 
         return new CursorPageResponse<>(
@@ -92,5 +93,5 @@ public class PhotoService {
         }
     }
 
-    private record PhotoCursor(String lastCreatedAt, String lastId) {}
+    private record PhotoCursor(String lastMediaAt, String lastId) {}
 }

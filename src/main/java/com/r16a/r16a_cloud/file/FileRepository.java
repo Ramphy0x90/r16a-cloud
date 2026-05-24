@@ -3,9 +3,11 @@ package com.r16a.r16a_cloud.file;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -74,10 +76,30 @@ public interface FileRepository extends JpaRepository<File, UUID> {
     @Query("SELECT MAX(f.updatedAt) FROM File f WHERE f.owner.id = :ownerId AND f.parent IS NULL")
     Optional<Instant> findMaxUpdatedAtByOwnerIdAndParentIsNull(@Param("ownerId") UUID ownerId);
 
+    // ── takenAt backfill ──────────────────────────────────────────────────────
+
+    @Query("""
+            SELECT f.id FROM File f
+            WHERE f.isDirectory = false AND f.takenAt IS NULL
+              AND (
+                LOWER(f.name) LIKE '%.jpg' OR LOWER(f.name) LIKE '%.jpeg' OR
+                LOWER(f.name) LIKE '%.png' OR LOWER(f.name) LIKE '%.gif' OR
+                LOWER(f.name) LIKE '%.webp' OR LOWER(f.name) LIKE '%.bmp' OR
+                LOWER(f.name) LIKE '%.avif' OR LOWER(f.name) LIKE '%.heic' OR
+                LOWER(f.name) LIKE '%.heif'
+              )
+            """)
+    List<UUID> findAllImageIdsMissingTakenAt();
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE File f SET f.takenAt = :takenAt WHERE f.id = :id")
+    void updateTakenAt(@Param("id") UUID id, @Param("takenAt") Instant takenAt);
+
     // ── Photos (media files grouped by year) ─────────────────────────────────
 
     @Query("""
-            SELECT extract(year from f.createdAt), COUNT(f)
+            SELECT extract(year from coalesce(f.takenAt, f.createdAt)), COUNT(f)
             FROM File f
             WHERE f.owner.id = :ownerId
               AND f.isDirectory = false
@@ -91,8 +113,8 @@ public interface FileRepository extends JpaRepository<File, UUID> {
                 LOWER(f.name) LIKE '%.avi' OR LOWER(f.name) LIKE '%.mkv' OR
                 LOWER(f.name) LIKE '%.webm' OR LOWER(f.name) LIKE '%.m4v'
               )
-            GROUP BY extract(year from f.createdAt)
-            ORDER BY extract(year from f.createdAt) DESC
+            GROUP BY extract(year from coalesce(f.takenAt, f.createdAt))
+            ORDER BY extract(year from coalesce(f.takenAt, f.createdAt)) DESC
             """)
     List<Object[]> findMediaYearCounts(@Param("ownerId") UUID ownerId);
 
@@ -100,7 +122,8 @@ public interface FileRepository extends JpaRepository<File, UUID> {
             SELECT f FROM File f
             WHERE f.owner.id = :ownerId
               AND f.isDirectory = false
-              AND f.createdAt >= :yearStart AND f.createdAt < :yearEnd
+              AND coalesce(f.takenAt, f.createdAt) >= :yearStart
+              AND coalesce(f.takenAt, f.createdAt) < :yearEnd
               AND (
                 LOWER(f.name) LIKE '%.jpg' OR LOWER(f.name) LIKE '%.jpeg' OR
                 LOWER(f.name) LIKE '%.png' OR LOWER(f.name) LIKE '%.gif' OR
@@ -111,7 +134,7 @@ public interface FileRepository extends JpaRepository<File, UUID> {
                 LOWER(f.name) LIKE '%.avi' OR LOWER(f.name) LIKE '%.mkv' OR
                 LOWER(f.name) LIKE '%.webm' OR LOWER(f.name) LIKE '%.m4v'
               )
-            ORDER BY f.createdAt DESC, f.id ASC
+            ORDER BY coalesce(f.takenAt, f.createdAt) DESC, f.id ASC
             """)
     Slice<File> findMediaForYear(
             @Param("ownerId") UUID ownerId,
@@ -123,8 +146,12 @@ public interface FileRepository extends JpaRepository<File, UUID> {
             SELECT f FROM File f
             WHERE f.owner.id = :ownerId
               AND f.isDirectory = false
-              AND f.createdAt >= :yearStart AND f.createdAt < :yearEnd
-              AND (f.createdAt < :lastCreatedAt OR (f.createdAt = :lastCreatedAt AND f.id > :lastId))
+              AND coalesce(f.takenAt, f.createdAt) >= :yearStart
+              AND coalesce(f.takenAt, f.createdAt) < :yearEnd
+              AND (
+                coalesce(f.takenAt, f.createdAt) < :lastMediaAt
+                OR (coalesce(f.takenAt, f.createdAt) = :lastMediaAt AND f.id > :lastId)
+              )
               AND (
                 LOWER(f.name) LIKE '%.jpg' OR LOWER(f.name) LIKE '%.jpeg' OR
                 LOWER(f.name) LIKE '%.png' OR LOWER(f.name) LIKE '%.gif' OR
@@ -135,13 +162,13 @@ public interface FileRepository extends JpaRepository<File, UUID> {
                 LOWER(f.name) LIKE '%.avi' OR LOWER(f.name) LIKE '%.mkv' OR
                 LOWER(f.name) LIKE '%.webm' OR LOWER(f.name) LIKE '%.m4v'
               )
-            ORDER BY f.createdAt DESC, f.id ASC
+            ORDER BY coalesce(f.takenAt, f.createdAt) DESC, f.id ASC
             """)
     Slice<File> findMediaForYearCursor(
             @Param("ownerId") UUID ownerId,
             @Param("yearStart") Instant yearStart,
             @Param("yearEnd") Instant yearEnd,
-            @Param("lastCreatedAt") Instant lastCreatedAt,
+            @Param("lastMediaAt") Instant lastMediaAt,
             @Param("lastId") UUID lastId,
             Pageable pageable);
 

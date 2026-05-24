@@ -99,6 +99,39 @@ public class ThumbnailService {
         }
     }
 
+    /**
+     * Reads EXIF DateTimeOriginal → DateTimeDigitized → DateTime in priority order.
+     * Returns null if no EXIF date exists or the file format is not supported.
+     */
+    public java.time.Instant extractTakenAt(Path path) {
+        try {
+            com.drew.metadata.Metadata metadata =
+                    com.drew.imaging.ImageMetadataReader.readMetadata(path.toFile());
+
+            com.drew.metadata.exif.ExifSubIFDDirectory subIFD =
+                    metadata.getFirstDirectoryOfType(com.drew.metadata.exif.ExifSubIFDDirectory.class);
+            if (subIFD != null) {
+                java.util.Date d = subIFD.getDate(
+                        com.drew.metadata.exif.ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL);
+                if (d != null) return d.toInstant();
+
+                d = subIFD.getDate(
+                        com.drew.metadata.exif.ExifSubIFDDirectory.TAG_DATETIME_DIGITIZED);
+                if (d != null) return d.toInstant();
+            }
+
+            com.drew.metadata.exif.ExifIFD0Directory ifd0 =
+                    metadata.getFirstDirectoryOfType(com.drew.metadata.exif.ExifIFD0Directory.class);
+            if (ifd0 != null) {
+                java.util.Date d = ifd0.getDate(com.drew.metadata.exif.ExifIFD0Directory.TAG_DATETIME);
+                if (d != null) return d.toInstant();
+            }
+        } catch (Exception ex) {
+            log.debug("No EXIF date in {}: {}", path.getFileName(), ex.getMessage());
+        }
+        return null;
+    }
+
     public String computeBlurHash(Path path) {
         String contentType;
         try {

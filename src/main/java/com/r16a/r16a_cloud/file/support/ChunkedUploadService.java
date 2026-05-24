@@ -193,6 +193,7 @@ public class ChunkedUploadService {
         }
 
         String blurHash = thumbnailService.computeBlurHash(targetPath);
+        Instant takenAt = thumbnailService.extractTakenAt(targetPath);
 
         Set<UUID> sharedWithIds = session.sharedWithIds() != null ? session.sharedWithIds() : Set.of();
         File file = File.builder()
@@ -206,6 +207,7 @@ public class ChunkedUploadService {
                 .owner(owner)
                 .sharedWith(resolveUsers(sharedWithIds))
                 .blurHash(blurHash)
+                .takenAt(takenAt)
                 .build();
 
         try {
