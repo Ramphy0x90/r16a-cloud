@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Lombok-generated code (equals, hashCode, builders) -->
+    <Match>
+        <Method name="equals"/>
+        <Bug category="STYLE"/>
+    </Match>
+
+    <!-- Spring @ConfigurationProperties / @Value fields are set by the framework, not constructors -->
+    <Match>
+        <Bug pattern="UWF_UNWRITTEN_FIELD,NP_UNWRITTEN_FIELD"/>
+    </Match>
+
+    <!-- JPA entity classes: mutable fields are intentional -->
+    <Match>
+        <Annotation name="jakarta.persistence.Entity"/>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- DTOs / records: returning arrays/collections by reference is intentional -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Class name="~.*\.dto\..*"/>
+    </Match>
+</FindBugsFilter>

@@ -2,6 +2,7 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '4.0.2'
 	id 'io.spring.dependency-management' version '1.1.7'
+	id 'com.github.spotbugs' version '6.1.7'
 }
 
 group = 'com.r16a'
@@ -44,4 +45,25 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+spotbugs {
+	toolVersion = '4.9.3'
+	excludeFilter = file('config/spotbugs-exclude.xml')
+	reportLevel = 'high'
+}
+
+spotbugsMain {
+	reports {
+		html { required = true }
+		xml { required = false }
+	}
+}
+
+configurations {
+	spotbugsPlugins
+}
+
+dependencies {
+	spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.13.0'
 }
