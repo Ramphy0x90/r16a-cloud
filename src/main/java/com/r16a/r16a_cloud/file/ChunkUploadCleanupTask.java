@@ -8,10 +8,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ChunkUploadCleanupTask {
 
-    private final FileService fileService;
+    private final ChunkedUploadService chunkedUploadService;
 
     @Scheduled(fixedRateString = "${app.upload.chunk-cleanup-interval-ms:3600000}")
     public void cleanupExpiredChunkSessions() {
-        fileService.deleteExpiredChunkUploadSessions();
+        chunkedUploadService.deleteExpiredChunkUploadSessions();
     }
 }

@@ -13,24 +13,19 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.*;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.io.*;
-import java.nio.channels.FileChannel;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.List;
-import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -39,7 +34,7 @@ import java.util.zip.ZipOutputStream;
 @RequiredArgsConstructor
 public class FileService {
 
-    private static final JsonMapper CHUNK_SESSION_JSON = JsonMapper.builder().build();
+    private static final JsonMapper CURSOR_JSON = JsonMapper.builder().build();
 
     private final FileRepository fileRepository;
     private final UserRepository userRepository;
@@ -49,18 +44,6 @@ public class FileService {
 
     @Value("${app.upload.path}")
     private String uploadRootPath;
-
-    @Value("${app.upload.chunk-default-part-size-bytes:8388608}")
-    private int chunkDefaultPartSizeBytes;
-
-    @Value("${app.upload.chunk-min-part-size-bytes:1048576}")
-    private int chunkMinPartSizeBytes;
-
-    @Value("${app.upload.chunk-max-part-size-bytes:67108864}")
-    private int chunkMaxPartSizeBytes;
-
-    @Value("${app.upload.chunk-session-ttl-hours:48}")
-    private long chunkSessionTtlHours;
 
     @PostConstruct
     void initUploadRoot() {
@@ -194,201 +177,6 @@ public class FileService {
         } catch (RuntimeException ex) {
             rollbackFsEntry(targetPath);
             throw ex;
-        }
-    }
-
-    public ChunkUploadInitResponse initChunkedUpload(ChunkUploadInitRequest request, UUID authenticatedUserId) {
-        if (!request.ownerId().equals(authenticatedUserId)) {
-            throw new AccessDeniedException("ownerId must match authenticated user");
-        }
-
-        if (request.totalSize() < 0) {
-            throw new StorageException("totalSize must be non-negative.");
-        }
-
-        String fileName = sanitizeFilenameFromString(request.fileName());
-        File parent = resolveParentForOwner(request.parentId(), request.ownerId());
-        checkDuplicateNameForCreate(fileName, parent, request.ownerId());
-
-        int partSizeBytes = resolvePartSizeBytes(request.partSizeBytes());
-        if (request.totalSize() > 0 && partSizeBytes <= 0) {
-            throw new StorageException("partSizeBytes must be positive when totalSize is positive.");
-        }
-
-        UUID uploadId = UUID.randomUUID();
-        Path sessionDir = chunkSessionDir(uploadId);
-        try {
-            Files.createDirectories(sessionDir);
-        } catch (IOException ex) {
-            throw new StorageException("Failed to create chunk session directory: " + sessionDir, ex);
-        }
-
-        Set<UUID> sharedIds = request.sharedWithIds() != null ? request.sharedWithIds() : Set.of();
-        ChunkUploadPersistedState state = new ChunkUploadPersistedState(
-                uploadId,
-                request.ownerId(),
-                request.parentId(),
-                fileName,
-                request.totalSize(),
-                partSizeBytes,
-                0L,
-                System.currentTimeMillis(),
-                request.description(),
-                request.visibility(),
-                sharedIds
-        );
-        writeChunkSessionState(sessionDir, state);
-        return new ChunkUploadInitResponse(uploadId, partSizeBytes);
-    }
-
-    public void uploadChunk(UUID uploadId, UUID authenticatedUserId, InputStream body) {
-        ChunkUploadPersistedState session = loadChunkSessionOrThrow(uploadId);
-        assertChunkOwner(session, authenticatedUserId);
-
-        if (session.totalSize() == 0) {
-            throw new StorageException("Cannot upload parts for a zero-byte file; call complete instead.");
-        }
-
-        long remaining = session.totalSize() - session.receivedBytes();
-        if (remaining <= 0) {
-            throw new StorageException("Upload already complete on disk; call complete to finalize.");
-        }
-
-        long expectedThisPart = Math.min(session.partSizeBytes(), remaining);
-        Path sessionDir = chunkSessionDir(uploadId);
-        Path dataPath = sessionDir.resolve("data.bin");
-        long confirmedBefore = session.receivedBytes();
-        long copied = 0;
-
-        try (OutputStream out = Files.newOutputStream(
-                dataPath,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.APPEND
-        )) {
-            copied = copyExactStream(body, out, expectedThisPart);
-            if (copied != expectedThisPart) {
-                throw new StorageException(
-                        "Chunk too short: expected " + expectedThisPart + " bytes, got " + copied
-                );
-            }
-            int extra = body.read();
-            if (extra >= 0) {
-                throw new StorageException("Chunk body is larger than expected for this part.");
-            }
-        } catch (IOException ex) {
-            rollbackPartialChunk(dataPath, confirmedBefore);
-            throw new StorageException("Failed to append chunk data: " + ex.getMessage(), ex);
-        } catch (RuntimeException ex) {
-            rollbackPartialChunk(dataPath, confirmedBefore);
-            throw ex;
-        }
-
-        long newReceived = confirmedBefore + copied;
-        ChunkUploadPersistedState updated = session.withReceivedBytes(newReceived);
-        writeChunkSessionState(sessionDir, updated);
-    }
-
-    public ChunkUploadStatusResponse getChunkedUploadStatus(UUID uploadId, UUID authenticatedUserId) {
-        ChunkUploadPersistedState session = loadChunkSessionOrThrow(uploadId);
-        assertChunkOwner(session, authenticatedUserId);
-        return new ChunkUploadStatusResponse(session.receivedBytes(), session.totalSize(), session.partSizeBytes());
-    }
-
-    @Transactional
-    public FileResponse completeChunkedUpload(UUID uploadId, UUID authenticatedUserId) {
-        ChunkUploadPersistedState session = loadChunkSessionOrThrow(uploadId);
-        assertChunkOwner(session, authenticatedUserId);
-
-        if (session.receivedBytes() != session.totalSize()) {
-            throw new StorageException(
-                    "Incomplete upload: received " + session.receivedBytes() + " of " + session.totalSize() + " bytes."
-            );
-        }
-
-        User owner = userRepository.findById(session.ownerId())
-                .orElseThrow(() -> new ResourceNotFoundException("User", "id", session.ownerId()));
-
-        File parent = resolveParentForOwner(session.parentId(), session.ownerId());
-        checkDuplicateNameForCreate(session.fileName(), parent, session.ownerId());
-
-        Path sessionDir = chunkSessionDir(uploadId);
-        Path dataPath = sessionDir.resolve("data.bin");
-        Path targetPath = resolveTargetPath(session.ownerId(), parent, session.fileName());
-
-        try {
-            Files.createDirectories(targetPath.getParent());
-            if (session.totalSize() == 0) {
-                createFsEntry(targetPath, false);
-            } else {
-                if (!Files.isRegularFile(dataPath)) {
-                    throw new StorageException("Missing chunk data file for completed upload.");
-                }
-                if (Files.size(dataPath) != session.totalSize()) {
-                    throw new StorageException("Chunk data size mismatch.");
-                }
-                Files.move(dataPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException ex) {
-            throw new StorageException("Failed to finalize chunked upload: " + ex.getMessage(), ex);
-        }
-
-        String blurHash = thumbnailService.computeBlurHash(targetPath);
-
-        File file = File.builder()
-                .name(session.fileName())
-                .description(session.description())
-                .fsPath(targetPath.toString())
-                .isDirectory(false)
-                .sizeBytes(session.totalSize())
-                .visibility(session.visibility() != null ? session.visibility() : Visibility.PRIVATE)
-                .parent(parent)
-                .owner(owner)
-                .sharedWith(resolveUsers(
-                        session.sharedWithIds() != null ? session.sharedWithIds() : Set.of()
-                ))
-                .blurHash(blurHash)
-                .build();
-
-        try {
-            FileResponse response = FileResponse.from(fileRepository.save(file));
-            deleteFsEntry(sessionDir);
-            return response;
-        } catch (RuntimeException ex) {
-            rollbackFsEntry(targetPath);
-            throw ex;
-        }
-    }
-
-    public void cancelChunkedUpload(UUID uploadId, UUID authenticatedUserId) {
-        ChunkUploadPersistedState session = loadChunkSessionOrThrow(uploadId);
-        assertChunkOwner(session, authenticatedUserId);
-        deleteFsEntry(chunkSessionDir(uploadId));
-    }
-
-    public void deleteExpiredChunkUploadSessions() {
-        Path root = chunkSessionsRoot();
-        if (!Files.isDirectory(root)) {
-            return;
-        }
-        long cutoffMs = Instant.now().minus(chunkSessionTtlHours, ChronoUnit.HOURS).toEpochMilli();
-        try (Stream<Path> stream = Files.list(root)) {
-            stream.filter(Files::isDirectory).forEach(dir -> {
-                try {
-                    Path sessionFile = dir.resolve("session.json");
-                    if (!Files.isRegularFile(sessionFile)) {
-                        deleteFsEntry(dir);
-                        return;
-                    }
-                    ChunkUploadPersistedState s = readChunkSessionState(dir);
-                    if (s.createdAtEpochMs() < cutoffMs) {
-                        deleteFsEntry(dir);
-                    }
-                } catch (Exception ex) {
-                    log.warn("Failed to clean chunk session dir {}: {}", dir, ex.getMessage());
-                }
-            });
-        } catch (IOException ex) {
-            log.warn("Failed to list chunk sessions: {}", ex.getMessage());
         }
     }
 
@@ -636,87 +424,6 @@ public class FileService {
         }
 
         return fileName;
-    }
-
-    private Path chunkSessionsRoot() {
-        Path root = Path.of(uploadRootPath).resolve("chunk_sessions").normalize();
-        try {
-            Files.createDirectories(root);
-        } catch (IOException ex) {
-            throw new StorageException("Failed to create chunk sessions root: " + root, ex);
-        }
-        return root;
-    }
-
-    private Path chunkSessionDir(UUID uploadId) {
-        return chunkSessionsRoot().resolve(uploadId.toString());
-    }
-
-    private ChunkUploadPersistedState loadChunkSessionOrThrow(UUID uploadId) {
-        Path sessionDir = chunkSessionDir(uploadId);
-        if (!Files.isDirectory(sessionDir)) {
-            throw new ResourceNotFoundException("Chunk upload", "id", uploadId);
-        }
-        return readChunkSessionState(sessionDir);
-    }
-
-    private void assertChunkOwner(ChunkUploadPersistedState session, UUID authenticatedUserId) {
-        if (!session.ownerId().equals(authenticatedUserId)) {
-            throw new AccessDeniedException("Not owner of this upload session");
-        }
-    }
-
-    private int resolvePartSizeBytes(Integer requested) {
-        int base = requested != null ? requested : chunkDefaultPartSizeBytes;
-        return Math.max(chunkMinPartSizeBytes, Math.min(chunkMaxPartSizeBytes, base));
-    }
-
-    private void writeChunkSessionState(Path sessionDir, ChunkUploadPersistedState state) {
-        Path tmp = sessionDir.resolve("session.json.tmp");
-        Path path = sessionDir.resolve("session.json");
-        try {
-            CHUNK_SESSION_JSON.writeValue(tmp.toFile(), state);
-            try {
-                Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (IOException ex) {
-                Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException ex) {
-            throw new StorageException("Failed to persist chunk session", ex);
-        }
-    }
-
-    private ChunkUploadPersistedState readChunkSessionState(Path sessionDir) {
-        Path path = sessionDir.resolve("session.json");
-        return CHUNK_SESSION_JSON.readValue(path.toFile(), ChunkUploadPersistedState.class);
-    }
-
-    private void rollbackPartialChunk(Path dataPath, long confirmedBefore) {
-        try {
-            if (!Files.exists(dataPath)) {
-                return;
-            }
-            try (FileChannel ch = FileChannel.open(dataPath, StandardOpenOption.WRITE)) {
-                ch.truncate(confirmedBefore);
-            }
-        } catch (IOException ex) {
-            log.warn("Failed to roll back partial chunk file {}: {}", dataPath, ex.getMessage());
-        }
-    }
-
-    private long copyExactStream(InputStream in, OutputStream out, long exactBytes) throws IOException {
-        byte[] buf = new byte[8192];
-        long total = 0;
-        while (total < exactBytes) {
-            int toRead = (int) Math.min(buf.length, exactBytes - total);
-            int r = in.read(buf, 0, toRead);
-            if (r < 0) {
-                return total;
-            }
-            out.write(buf, 0, r);
-            total += r;
-        }
-        return total;
     }
 
     private void moveFsEntry(Path source, Path target) {
@@ -974,7 +681,7 @@ public class FileService {
 
     private static String encodeCursor(FileCursor cursor) {
         try {
-            byte[] json = CHUNK_SESSION_JSON.writeValueAsBytes(cursor);
+            byte[] json = CURSOR_JSON.writeValueAsBytes(cursor);
             return Base64.getUrlEncoder().withoutPadding().encodeToString(json);
         } catch (Exception ex) {
             throw new StorageException("Failed to encode cursor", ex);
@@ -984,7 +691,7 @@ public class FileService {
     private static FileCursor decodeCursor(String encoded) {
         try {
             byte[] json = Base64.getUrlDecoder().decode(encoded);
-            return CHUNK_SESSION_JSON.readValue(json, FileCursor.class);
+            return CURSOR_JSON.readValue(json, FileCursor.class);
         } catch (Exception ex) {
             throw new StorageException("Invalid pagination cursor");
         }

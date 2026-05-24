@@ -34,6 +34,7 @@ public class FileController {
 
     private final FileService fileService;
     private final ThumbnailService thumbnailService;
+    private final ChunkedUploadService chunkedUploadService;
 
     @PostMapping
     public ResponseEntity<FileResponse> createFile(@Valid @RequestBody CreateFileRequest request) {
@@ -46,7 +47,7 @@ public class FileController {
             @AuthenticationPrincipal User user
     ) {
         return ResponseEntity.status(HttpStatus.CREATED).body(
-                fileService.initChunkedUpload(request, user.getId())
+                chunkedUploadService.initChunkedUpload(request, user.getId())
         );
     }
 
@@ -56,7 +57,7 @@ public class FileController {
             @AuthenticationPrincipal User user,
             InputStream body
     ) {
-        fileService.uploadChunk(uploadId, user.getId(), body);
+        chunkedUploadService.uploadChunk(uploadId, user.getId(), body);
         return ResponseEntity.noContent().build();
     }
 
@@ -65,7 +66,7 @@ public class FileController {
             @PathVariable UUID uploadId,
             @AuthenticationPrincipal User user
     ) {
-        return ResponseEntity.ok(fileService.getChunkedUploadStatus(uploadId, user.getId()));
+        return ResponseEntity.ok(chunkedUploadService.getChunkedUploadStatus(uploadId, user.getId()));
     }
 
     @PostMapping("/upload/{uploadId}/complete")
@@ -74,7 +75,7 @@ public class FileController {
             @AuthenticationPrincipal User user
     ) {
         return ResponseEntity.status(HttpStatus.CREATED).body(
-                fileService.completeChunkedUpload(uploadId, user.getId())
+                chunkedUploadService.completeChunkedUpload(uploadId, user.getId())
         );
     }
 
@@ -83,7 +84,7 @@ public class FileController {
             @PathVariable UUID uploadId,
             @AuthenticationPrincipal User user
     ) {
-        fileService.cancelChunkedUpload(uploadId, user.getId());
+        chunkedUploadService.cancelChunkedUpload(uploadId, user.getId());
         return ResponseEntity.noContent().build();
     }
 
