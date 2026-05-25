@@ -94,13 +94,14 @@ public class FileService {
         long uploadedFiles = fileRepository.countByOwnerIdAndIsDirectoryFalse(ownerId);
         long usedStorageBytes = fileRepository.sumFileSizeBytesByOwnerId(ownerId);
         long sharedFiles = fileRepository.countSharedFilesByOwnerId(ownerId);
+        long uploadedPhotos = fileRepository.countMediaByOwnerId(ownerId);
         List<RecentFileItemResponse> recentFiles = fileRepository
                 .findTop5ByOwnerIdAndIsDirectoryFalseOrderByUpdatedAtDesc(ownerId)
                 .stream()
                 .map(RecentFileItemResponse::from)
                 .toList();
 
-        DashboardMetricsResponse metrics = new DashboardMetricsResponse(uploadedFiles, usedStorageBytes, sharedFiles);
+        DashboardMetricsResponse metrics = new DashboardMetricsResponse(uploadedFiles, usedStorageBytes, sharedFiles, uploadedPhotos);
         return new DashboardResponse(metrics, recentFiles);
     }
 

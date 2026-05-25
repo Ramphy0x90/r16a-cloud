@@ -33,6 +33,7 @@ class FileServiceDashboardTests {
         when(fileRepository.countByOwnerIdAndIsDirectoryFalse(ownerId)).thenReturn(12L);
         when(fileRepository.sumFileSizeBytesByOwnerId(ownerId)).thenReturn(2048L);
         when(fileRepository.countSharedFilesByOwnerId(ownerId)).thenReturn(3L);
+        when(fileRepository.countMediaByOwnerId(ownerId)).thenReturn(5L);
 
         File recentA = File.builder()
                 .id(UUID.randomUUID())
@@ -58,6 +59,7 @@ class FileServiceDashboardTests {
         assertEquals(12L, response.metrics().uploadedFiles());
         assertEquals(2048L, response.metrics().usedStorageBytes());
         assertEquals(3L, response.metrics().sharedFiles());
+        assertEquals(5L, response.metrics().uploadedPhotos());
         assertEquals(2, response.recentFiles().size());
         assertEquals("report.pdf", response.recentFiles().getFirst().name());
         assertEquals(Visibility.SHARED, response.recentFiles().getFirst().visibility());
