@@ -9,6 +9,8 @@ import com.r16a.r16a_cloud.file.dto.FileResponse;
 import com.r16a.r16a_cloud.photo.dto.PhotoYearSummary;
 import com.r16a.r16a_cloud.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,10 @@ public class PhotoService {
     private final FileRepository fileRepository;
     private final UserRepository userRepository;
 
+    @CacheEvict(value = "photoYears", key = "#ownerId")
+    public void evictYearsCache(UUID ownerId) {}
+
+    @Cacheable(value = "photoYears", key = "#ownerId")
     @Transactional(readOnly = true)
     public List<PhotoYearSummary> getPhotoYears(UUID ownerId) {
         if (!userRepository.existsById(ownerId)) {

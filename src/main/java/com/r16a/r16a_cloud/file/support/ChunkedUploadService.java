@@ -9,6 +9,7 @@ import com.r16a.r16a_cloud.file.FileEventRepository;
 import com.r16a.r16a_cloud.file.FileEventType;
 import com.r16a.r16a_cloud.file.FileRepository;
 import com.r16a.r16a_cloud.file.Visibility;
+import com.r16a.r16a_cloud.photo.PhotoService;
 import com.r16a.r16a_cloud.file.dto.*;
 import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;
@@ -43,6 +44,7 @@ public class ChunkedUploadService {
     private final FileEventRepository fileEventRepository;
     private final ThumbnailService thumbnailService;
     private final MediaDateExtractor mediaDateExtractor;
+    private final PhotoService photoService;
 
     @Value("${app.upload.path}")
     private String uploadRootPath;
@@ -214,6 +216,7 @@ public class ChunkedUploadService {
         try {
             FileResponse response = FileResponse.from(fileRepository.save(file));
             recordEvent(file, FileEventType.CREATED);
+            photoService.evictYearsCache(owner.getId());
             deleteFsEntry(sessionDir);
             return response;
         } catch (RuntimeException ex) {

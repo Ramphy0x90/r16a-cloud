@@ -32,8 +32,16 @@ public class CacheConfig implements CachingConfigurer {
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(new JdkSerializationRedisSerializer()));
 
+        RedisCacheConfiguration photoYearsConfig = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofHours(1))
+                .serializeKeysWith(RedisSerializationContext.SerializationPair
+                        .fromSerializer(new StringRedisSerializer()))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair
+                        .fromSerializer(new JdkSerializationRedisSerializer()));
+
         return RedisCacheManager.builder(factory)
                 .withCacheConfiguration("thumbnails", thumbnailConfig)
+                .withCacheConfiguration("photoYears", photoYearsConfig)
                 .build();
     }
 

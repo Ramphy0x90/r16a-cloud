@@ -8,6 +8,7 @@ import com.r16a.r16a_cloud.file.support.DownloadTokenService;
 import com.r16a.r16a_cloud.file.support.FileZipService;
 import com.r16a.r16a_cloud.file.support.MediaDateExtractor;
 import com.r16a.r16a_cloud.file.support.ThumbnailService;
+import com.r16a.r16a_cloud.photo.PhotoService;
 import com.r16a.r16a_cloud.user.User;
 import com.r16a.r16a_cloud.user.UserRepository;
 import jakarta.annotation.PostConstruct;
@@ -42,6 +43,7 @@ public class FileService {
     private final ThumbnailService thumbnailService;
     private final FileZipService fileZipService;
     private final MediaDateExtractor mediaDateExtractor;
+    private final PhotoService photoService;
 
     @Value("${app.upload.path}")
     private String uploadRootPath;
@@ -177,6 +179,7 @@ public class FileService {
         try {
             FileResponse response = FileResponse.from(fileRepository.save(file));
             recordEvent(file, FileEventType.CREATED);
+            photoService.evictYearsCache(ownerId);
             return response;
         } catch (RuntimeException ex) {
             rollbackFsEntry(targetPath);
@@ -260,6 +263,7 @@ public class FileService {
     })
     public void deleteFile(UUID id) {
         File file = findFileOrThrow(id);
+        photoService.evictYearsCache(file.getOwner().getId());
         recordEvent(file, FileEventType.DELETED);
         deleteFsEntry(Path.of(file.getFsPath()));
         thumbnailService.deleteThumbnailCache(id);
