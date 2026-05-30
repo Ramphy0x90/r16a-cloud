@@ -26,6 +26,7 @@ import java.util.stream.Stream;
 public class ThumbnailService {
 
     private final FileRepository fileRepository;
+    private final VideoFrameExtractor videoFrameExtractor;
 
     @Value("${app.upload.path}")
     private String uploadRootPath;
@@ -62,16 +63,18 @@ public class ThumbnailService {
             throw new StorageException("Failed to read file metadata: " + file.getName(), ex);
         }
 
-        if (contentType == null || contentType.isBlank()) contentType = "application/octet-stream";
-        if (!contentType.startsWith("image/")) {
+        if (contentType == null || contentType.isBlank()) contentType = guessContentTypeFromName(file.getName());
+        boolean isVideo = contentType.startsWith("video/");
+        if (!contentType.startsWith("image/") && !isVideo) {
+            log.warn("Unsupported content type '{}' for thumbnail of file {}", contentType, file.getName());
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "Thumbnails are only supported for image files.");
+                    "Thumbnails are only supported for image and video files.");
         }
 
         long lastModifiedEpochMs = file.getUpdatedAt().toEpochMilli();
 
-        String outputFormat = resolveOutputFormatFromContentType(contentType);
+        String outputFormat = isVideo ? "jpg" : resolveOutputFormatFromContentType(contentType);
         Path cachePath = thumbnailCachePath(id, size, outputFormat);
         if (Files.exists(cachePath)) {
             try {
@@ -84,8 +87,26 @@ public class ThumbnailService {
         }
 
         try {
-            byte[] originalContent = Files.readAllBytes(path);
-            ThumbnailBinary tb = tryBuildThumbnail(originalContent, contentType, size.maxDimensionPx());
+            byte[] sourceContent;
+            String sourceContentType;
+            if (isVideo) {
+                log.debug("Extracting video frame for thumbnail: {}", file.getName());
+                byte[] frame = videoFrameExtractor.extractFrame(path);
+                if (frame == null) {
+                    log.warn("ffmpeg returned no frame for video: {}", file.getName());
+                    throw new org.springframework.web.server.ResponseStatusException(
+                            org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                            "Could not extract frame from video: " + file.getName());
+                }
+                log.debug("Extracted {} bytes frame from video: {}", frame.length, file.getName());
+                sourceContent = frame;
+                sourceContentType = "image/png";
+            } else {
+                sourceContent = Files.readAllBytes(path);
+                sourceContentType = contentType;
+            }
+
+            ThumbnailBinary tb = tryBuildThumbnail(sourceContent, sourceContentType, size.maxDimensionPx());
 
             try {
                 Files.write(cachePath, tb.content());
@@ -94,6 +115,8 @@ public class ThumbnailService {
             }
 
             return new ThumbnailPayload(tb.contentType(), tb.content(), lastModifiedEpochMs, buildThumbnailETag(id, size, lastModifiedEpochMs, tb.content().length));
+        } catch (org.springframework.web.server.ResponseStatusException ex) {
+            throw ex;
         } catch (IOException ex) {
             throw new StorageException("Failed to generate thumbnail for file: " + file.getName(), ex);
         }
@@ -107,12 +130,21 @@ public class ThumbnailService {
             return null;
         }
 
-        if (contentType == null || !contentType.startsWith("image/") || isVectorOrUnsupportedForResize(contentType)) {
-            return null;
-        }
+        if (contentType == null || contentType.isBlank()) contentType = guessContentTypeFromName(path.getFileName().toString());
 
-        try (InputStream in = Files.newInputStream(path)) {
-            BufferedImage image = ImageIO.read(in);
+        try {
+            BufferedImage image;
+            if (contentType.startsWith("video/")) {
+                byte[] frame = videoFrameExtractor.extractFrame(path);
+                if (frame == null) return null;
+                image = ImageIO.read(new java.io.ByteArrayInputStream(frame));
+            } else if (contentType.startsWith("image/") && !isVectorOrUnsupportedForResize(contentType)) {
+                try (InputStream in = Files.newInputStream(path)) {
+                    image = ImageIO.read(in);
+                }
+            } else {
+                return null;
+            }
             if (image == null) return null;
             return BlurHashEncoder.encode(image, 4, 3);
         } catch (Exception ex) {
@@ -206,6 +238,21 @@ public class ThumbnailService {
             log.warn("Failed to resize image, returning original content.", ex);
             return new ThumbnailBinary(originalContent, contentType);
         }
+    }
+
+    private String guessContentTypeFromName(String fileName) {
+        if (fileName == null) return "application/octet-stream";
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".mp4") || lower.endsWith(".m4v")) return "video/mp4";
+        if (lower.endsWith(".mov")) return "video/quicktime";
+        if (lower.endsWith(".avi")) return "video/x-msvideo";
+        if (lower.endsWith(".mkv")) return "video/x-matroska";
+        if (lower.endsWith(".webm")) return "video/webm";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".webp")) return "image/webp";
+        return "application/octet-stream";
     }
 
     private boolean isVectorOrUnsupportedForResize(String contentType) {

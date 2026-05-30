@@ -1,6 +1,7 @@
 package com.r16a.r16a_cloud.file;
 
 import com.r16a.r16a_cloud.file.support.ThumbnailService;
+import com.r16a.r16a_cloud.file.support.VideoFrameExtractor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.junit.jupiter.api.Test;
@@ -29,11 +30,14 @@ class FileServiceThumbnailTests {
     @Mock
     private FileRepository fileRepository;
 
+    @Mock
+    private VideoFrameExtractor videoFrameExtractor;
+
     @TempDir
     Path tempDir;
 
     private ThumbnailService buildService() {
-        ThumbnailService service = new ThumbnailService(fileRepository);
+        ThumbnailService service = new ThumbnailService(fileRepository, videoFrameExtractor);
         ReflectionTestUtils.setField(service, "uploadRootPath", tempDir.toString());
         return service;
     }
