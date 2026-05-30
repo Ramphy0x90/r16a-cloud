@@ -125,7 +125,6 @@ public interface FileRepository extends JpaRepository<File, UUID> {
                 LOWER(f.name) LIKE '%.png' OR LOWER(f.name) LIKE '%.gif' OR
                 LOWER(f.name) LIKE '%.webp' OR LOWER(f.name) LIKE '%.bmp' OR
                 LOWER(f.name) LIKE '%.avif' OR LOWER(f.name) LIKE '%.svg' OR
-                LOWER(f.name) LIKE '%.heic' OR LOWER(f.name) LIKE '%.heif' OR
                 LOWER(f.name) LIKE '%.mp4' OR LOWER(f.name) LIKE '%.mov' OR
                 LOWER(f.name) LIKE '%.avi' OR LOWER(f.name) LIKE '%.mkv' OR
                 LOWER(f.name) LIKE '%.webm' OR LOWER(f.name) LIKE '%.m4v'
@@ -146,7 +145,6 @@ public interface FileRepository extends JpaRepository<File, UUID> {
                 LOWER(f.name) LIKE '%.png' OR LOWER(f.name) LIKE '%.gif' OR
                 LOWER(f.name) LIKE '%.webp' OR LOWER(f.name) LIKE '%.bmp' OR
                 LOWER(f.name) LIKE '%.avif' OR LOWER(f.name) LIKE '%.svg' OR
-                LOWER(f.name) LIKE '%.heic' OR LOWER(f.name) LIKE '%.heif' OR
                 LOWER(f.name) LIKE '%.mp4' OR LOWER(f.name) LIKE '%.mov' OR
                 LOWER(f.name) LIKE '%.avi' OR LOWER(f.name) LIKE '%.mkv' OR
                 LOWER(f.name) LIKE '%.webm' OR LOWER(f.name) LIKE '%.m4v'
@@ -174,7 +172,6 @@ public interface FileRepository extends JpaRepository<File, UUID> {
                 LOWER(f.name) LIKE '%.png' OR LOWER(f.name) LIKE '%.gif' OR
                 LOWER(f.name) LIKE '%.webp' OR LOWER(f.name) LIKE '%.bmp' OR
                 LOWER(f.name) LIKE '%.avif' OR LOWER(f.name) LIKE '%.svg' OR
-                LOWER(f.name) LIKE '%.heic' OR LOWER(f.name) LIKE '%.heif' OR
                 LOWER(f.name) LIKE '%.mp4' OR LOWER(f.name) LIKE '%.mov' OR
                 LOWER(f.name) LIKE '%.avi' OR LOWER(f.name) LIKE '%.mkv' OR
                 LOWER(f.name) LIKE '%.webm' OR LOWER(f.name) LIKE '%.m4v'
