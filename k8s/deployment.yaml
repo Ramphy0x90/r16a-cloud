@@ -60,6 +60,13 @@ spec:
                 secretKeyRef:
                   name: r16a-cloud-secret
                   key: DOWNLOAD_TOKEN_SECRET
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
           volumeMounts:
             - name: uploads
               mountPath: /app/uploads

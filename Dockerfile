@@ -10,7 +10,10 @@ RUN ./gradlew clean build -x test -x spotbugsMain -x spotbugsTest --no-daemon
 
 # Runtime stage
 FROM eclipse-temurin:21-jre
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils && \
+    curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+    | tar -xJ --strip-components=1 -C /usr/local/bin --wildcards '*/ffmpeg' && \
+    apt-get purge -y curl xz-utils && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser
 WORKDIR /app
 COPY --from=build /app/build/libs/*.jar app.jar
