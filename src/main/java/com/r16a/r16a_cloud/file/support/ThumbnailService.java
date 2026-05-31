@@ -27,6 +27,7 @@ public class ThumbnailService {
 
     private final FileRepository fileRepository;
     private final VideoFrameExtractor videoFrameExtractor;
+    private final HeicConverter heicConverter;
 
     @Value("${app.upload.path}")
     private String uploadRootPath;
@@ -101,6 +102,17 @@ public class ThumbnailService {
                 log.debug("Extracted {} bytes frame from video: {}", frame.length, file.getName());
                 sourceContent = frame;
                 sourceContentType = "image/png";
+            } else if (isHeic(contentType)) {
+                log.debug("Converting HEIC to JPEG for thumbnail: {}", file.getName());
+                byte[] jpeg = heicConverter.convertToJpeg(path);
+                if (jpeg == null) {
+                    log.warn("HEIC conversion returned no data for: {}", file.getName());
+                    throw new org.springframework.web.server.ResponseStatusException(
+                            org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                            "Could not convert HEIC image: " + file.getName());
+                }
+                sourceContent = jpeg;
+                sourceContentType = "image/jpeg";
             } else {
                 sourceContent = Files.readAllBytes(path);
                 sourceContentType = contentType;
@@ -138,6 +150,10 @@ public class ThumbnailService {
                 byte[] frame = videoFrameExtractor.extractFrame(path);
                 if (frame == null) return null;
                 image = ImageIO.read(new java.io.ByteArrayInputStream(frame));
+            } else if (isHeic(contentType)) {
+                byte[] jpeg = heicConverter.convertToJpeg(path);
+                if (jpeg == null) return null;
+                image = ImageIO.read(new java.io.ByteArrayInputStream(jpeg));
             } else if (contentType.startsWith("image/") && !isVectorOrUnsupportedForResize(contentType)) {
                 try (InputStream in = Files.newInputStream(path)) {
                     image = ImageIO.read(in);
@@ -252,7 +268,13 @@ public class ThumbnailService {
         if (lower.endsWith(".png")) return "image/png";
         if (lower.endsWith(".gif")) return "image/gif";
         if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".heic")) return "image/heic";
+        if (lower.endsWith(".heif")) return "image/heif";
         return "application/octet-stream";
+    }
+
+    private boolean isHeic(String contentType) {
+        return "image/heic".equalsIgnoreCase(contentType) || "image/heif".equalsIgnoreCase(contentType);
     }
 
     private boolean isVectorOrUnsupportedForResize(String contentType) {

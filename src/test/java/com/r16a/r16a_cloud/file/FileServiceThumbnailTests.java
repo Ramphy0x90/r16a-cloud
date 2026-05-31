@@ -1,5 +1,6 @@
 package com.r16a.r16a_cloud.file;
 
+import com.r16a.r16a_cloud.file.support.HeicConverter;
 import com.r16a.r16a_cloud.file.support.ThumbnailService;
 import com.r16a.r16a_cloud.file.support.VideoFrameExtractor;
 import org.springframework.http.HttpStatus;
@@ -33,11 +34,14 @@ class FileServiceThumbnailTests {
     @Mock
     private VideoFrameExtractor videoFrameExtractor;
 
+    @Mock
+    private HeicConverter heicConverter;
+
     @TempDir
     Path tempDir;
 
     private ThumbnailService buildService() {
-        ThumbnailService service = new ThumbnailService(fileRepository, videoFrameExtractor);
+        ThumbnailService service = new ThumbnailService(fileRepository, videoFrameExtractor, heicConverter);
         ReflectionTestUtils.setField(service, "uploadRootPath", tempDir.toString());
         return service;
     }
