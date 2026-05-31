@@ -64,7 +64,8 @@ public class ThumbnailService {
             throw new StorageException("Failed to read file metadata: " + file.getName(), ex);
         }
 
-        if (contentType == null || contentType.isBlank()) contentType = guessContentTypeFromName(file.getName());
+        if (contentType == null || contentType.isBlank() || "application/octet-stream".equals(contentType))
+            contentType = guessContentTypeFromName(file.getName());
         boolean isVideo = contentType.startsWith("video/");
         if (!contentType.startsWith("image/") && !isVideo) {
             log.warn("Unsupported content type '{}' for thumbnail of file {}", contentType, file.getName());
@@ -142,7 +143,8 @@ public class ThumbnailService {
             return null;
         }
 
-        if (contentType == null || contentType.isBlank()) contentType = guessContentTypeFromName(path.getFileName().toString());
+        if (contentType == null || contentType.isBlank() || "application/octet-stream".equals(contentType))
+            contentType = guessContentTypeFromName(path.getFileName().toString());
 
         try {
             BufferedImage image;
@@ -321,7 +323,8 @@ public class ThumbnailService {
 
     public enum ThumbnailSize {
         SMALL("small", 200),
-        MEDIUM("medium", 512);
+        MEDIUM("medium", 512),
+        LARGE("large", 2048);
 
         private final String queryValue;
         private final int maxDimensionPx;
