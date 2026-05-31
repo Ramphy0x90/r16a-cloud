@@ -15,6 +15,7 @@ spec:
       labels:
         app: r16a-cloud
     spec:
+      terminationGracePeriodSeconds: 30
       imagePullSecrets:
         - name: registry-r16a-cloud
       containers:

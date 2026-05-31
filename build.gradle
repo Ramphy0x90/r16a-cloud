@@ -40,6 +40,8 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	implementation 'com.drewnoakes:metadata-extractor:2.19.0'
+	implementation 'ws.schild:jave-core:3.5.0'
+	implementation 'ws.schild:jave-nativebin-linux64:3.5.0'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

@@ -2,77 +2,58 @@ package com.r16a.r16a_cloud.file.support;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import ws.schild.jave.MultimediaObject;
+import ws.schild.jave.ScreenExtractor;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Semaphore;
 
 @Slf4j
 @Component
 public class VideoFrameExtractor {
 
-    private static final int TIMEOUT_SECONDS = 30;
+    private static final int MAX_CONCURRENT = 2;
+    private final Semaphore semaphore = new Semaphore(MAX_CONCURRENT);
 
-    /**
-     * Extracts a single frame from a video file using ffmpeg and returns it as PNG bytes.
-     * Tries 1s into the video first; falls back to the very first frame if that fails
-     * (handles videos shorter than 1 second).
-     *
-     * Returns null if ffmpeg is not installed or extraction fails.
-     */
     public byte[] extractFrame(Path videoPath) {
-        byte[] frame = runFfmpeg(videoPath, "00:00:01");
-        if (frame == null) {
-            frame = runFfmpeg(videoPath, "00:00:00");
+        if (!semaphore.tryAcquire()) {
+            log.debug("Video frame extraction at capacity, skipping {}", videoPath.getFileName());
+            return null;
         }
-        return frame;
+
+        try {
+            return doExtract(videoPath);
+        } finally {
+            semaphore.release();
+        }
     }
 
-    private byte[] runFfmpeg(Path videoPath, String timestamp) {
-        ProcessBuilder pb = new ProcessBuilder(
-                "ffmpeg",
-                "-ss", timestamp,
-                "-i", videoPath.toAbsolutePath().toString(),
-                "-frames:v", "1",
-                "-f", "image2pipe",
-                "-vcodec", "png",
-                "-"
-        );
-        pb.redirectErrorStream(false);
-
-        Process process;
-        try {
-            process = pb.start();
-        } catch (IOException ex) {
-            log.warn("ffmpeg not available, video thumbnails disabled: {}", ex.getMessage());
-            return null;
-        }
+    private byte[] doExtract(Path videoPath) {
+        Path tempOutput = null;
 
         try {
-            byte[] frameBytes;
-            try (InputStream stdout = process.getInputStream()) {
-                frameBytes = stdout.readAllBytes();
-            }
+            tempOutput = Files.createTempFile("frame_", ".jpg");
+            MultimediaObject source = new MultimediaObject(videoPath.toFile());
+            long durationMs = source.getInfo().getDuration();
+            long seekMs = durationMs > 1000 ? 1000 : 0;
 
-            boolean finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-                log.warn("ffmpeg timed out extracting frame from {}", videoPath.getFileName());
-                return null;
-            }
+            ScreenExtractor extractor = new ScreenExtractor();
+            extractor.renderOneImage(source, -1, -1, seekMs, tempOutput.toFile(), 1);
 
-            if (process.exitValue() != 0 || frameBytes.length == 0) {
-                return null;
-            }
-
-            return frameBytes;
-        } catch (IOException | InterruptedException ex) {
-            process.destroyForcibly();
-            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            byte[] bytes = Files.readAllBytes(tempOutput);
+            return bytes.length > 0 ? bytes : null;
+        } catch (Exception ex) {
             log.warn("Failed to extract frame from {}: {}", videoPath.getFileName(), ex.getMessage());
             return null;
+        } finally {
+            if (tempOutput != null) {
+                try {
+                    Files.deleteIfExists(tempOutput);
+                } catch (IOException ignored) {
+                }
+            }
         }
     }
 }

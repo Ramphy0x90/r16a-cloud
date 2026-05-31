@@ -103,4 +103,4 @@ jobs:
             - name: Apply Kubernetes manifests
               run: |
                   kubectl apply -f k8s/
-                  kubectl rollout status deployment/r16a-cloud -n r16a-cloud --timeout=120s
+                  kubectl rollout status deployment/r16a-cloud -n r16a-cloud --timeout=300s
