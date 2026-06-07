@@ -33,8 +33,12 @@ public class PhotoService {
     private final FileRepository fileRepository;
     private final UserRepository userRepository;
 
+    private record PhotoCursor(String lastMediaAt, String lastId) {
+    }
+
     @CacheEvict(value = "photoYears", key = "#ownerId")
-    public void evictYearsCache(UUID ownerId) {}
+    public void evictYearsCache(UUID ownerId) {
+    }
 
     @Cacheable(value = "photoYears", key = "#ownerId")
     @Transactional(readOnly = true)
@@ -42,6 +46,7 @@ public class PhotoService {
         if (!userRepository.existsById(ownerId)) {
             throw new ResourceNotFoundException("User", "id", ownerId);
         }
+
         return fileRepository.findMediaYearCounts(ownerId).stream()
                 .map(row -> new PhotoYearSummary(
                         ((Number) row[0]).intValue(),
@@ -72,7 +77,7 @@ public class PhotoService {
 
         String nextCursor = null;
         if (slice.hasNext() && !slice.getContent().isEmpty()) {
-            File last = slice.getContent().get(slice.getContent().size() - 1);
+            File last = slice.getContent().getLast();
             Instant lastMediaAt = last.getTakenAt() != null ? last.getTakenAt() : last.getCreatedAt();
             nextCursor = encodeCursor(new PhotoCursor(lastMediaAt.toString(), last.getId().toString()));
         }
@@ -98,6 +103,4 @@ public class PhotoService {
             throw new StorageException("Invalid photo pagination cursor");
         }
     }
-
-    private record PhotoCursor(String lastMediaAt, String lastId) {}
 }
