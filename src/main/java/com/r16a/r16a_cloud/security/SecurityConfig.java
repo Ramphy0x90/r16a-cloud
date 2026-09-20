@@ -5,7 +5,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -35,6 +34,7 @@ public class SecurityConfig {
      * Custom decoder to specify a bigger timeout. My IdP (Authentik)
      * is a bit slow, to avoid false unauthorized responses from the
      * backend when the frontend invokes any API, this is required....
+     *
      * @return JwtDecoder
      */
     @Bean
@@ -69,7 +69,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("http://localhost:4200", "https://cloud.r16a.cloud"));
+        config.setAllowedOriginPatterns(List.of(
+                "http://localhost:4200",
+                "https://cloud.r16a.cloud",
+                "https://192.168.*.*:*"
+        ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
