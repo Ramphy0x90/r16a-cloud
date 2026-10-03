@@ -21,6 +21,8 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
@@ -258,6 +260,51 @@ public class FileService {
         deleteFsEntry(Path.of(file.getFsPath()));
         thumbnailService.deleteThumbnailCache(id);
         deleteFromDbRecursively(file);
+    }
+
+    /**
+     * Erases every file [ownerId] owns and removes them from other users' share lists — the
+     * file half of account deletion. Database rows go in the caller's transaction; the owner's
+     * storage folder and thumbnail files are deleted only after it commits, so a rollback never
+     * leaves rows pointing at missing content. Returns the erased file ids.
+     */
+    @Transactional
+    public List<UUID> eraseAllOwnedBy(UUID ownerId) {
+        for (File shared : fileRepository.findAllSharedWithUser(ownerId)) {
+            shared.getSharedWith().removeIf(user -> user.getId().equals(ownerId));
+            applyVisibilityForSharing(shared, shared.getSharedWith());
+            fileRepository.save(shared);
+        }
+
+        List<File> owned = fileRepository.findByOwnerId(ownerId);
+        List<UUID> ids = owned.stream().map(File::getId).toList();
+        // Deepest paths first: children go before their parents.
+        owned.stream()
+                .sorted(Comparator.comparingInt((File f) -> Path.of(f.getFsPath()).getNameCount()).reversed())
+                .forEach(fileRepository::delete);
+        fileEventRepository.deleteByOwnerId(ownerId);
+        photoService.evictYearsCache(ownerId);
+
+        Path ownerRoot = Path.of(uploadRootPath).resolve("user_" + ownerId).normalize();
+        afterCommit(() -> {
+            deleteFsEntry(ownerRoot);
+            ids.forEach(thumbnailService::deleteThumbnailCache);
+        });
+        return ids;
+    }
+
+    /** Runs [action] after the current transaction commits, or now when there is none. */
+    private static void afterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 
     public DownloadPayload downloadSingle(UUID id, UUID requesterId) {

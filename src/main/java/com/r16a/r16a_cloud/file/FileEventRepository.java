@@ -11,4 +11,6 @@ public interface FileEventRepository extends JpaRepository<FileEvent, UUID> {
 
     Slice<FileEvent> findByOwnerIdAndOccurredAtGreaterThanOrderByOccurredAtAsc(
             UUID ownerId, Instant since, Pageable pageable);
+
+    long deleteByOwnerId(UUID ownerId);
 }

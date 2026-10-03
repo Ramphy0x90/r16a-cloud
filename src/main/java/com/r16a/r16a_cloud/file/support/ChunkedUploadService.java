@@ -258,6 +258,25 @@ public class ChunkedUploadService {
         }
     }
 
+    /** Drops every in-progress upload session of [ownerId] (account erasure). */
+    public void deleteSessionsOwnedBy(UUID ownerId) {
+        Path root = sessionsRoot();
+        try (Stream<Path> stream = Files.list(root)) {
+            stream.filter(Files::isDirectory).forEach(dir -> {
+                try {
+                    if (!Files.isRegularFile(dir.resolve("session.json"))) return;
+                    if (ownerId.equals(readSessionState(dir).ownerId())) {
+                        deleteFsEntry(dir);
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to erase chunk session dir {}: {}", dir, ex.getMessage());
+                }
+            });
+        } catch (IOException ex) {
+            log.warn("Failed to list chunk sessions for erasure: {}", ex.getMessage());
+        }
+    }
+
     private ChunkUploadPersistedState loadSessionOrThrow(UUID uploadId) {
         Path dir = sessionDir(uploadId);
         if (!Files.isDirectory(dir)) {

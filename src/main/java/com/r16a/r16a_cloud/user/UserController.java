@@ -32,6 +32,7 @@ import java.util.UUID;
 public class UserController {
 
     private final UserService userService;
+    private final AccountDeletionService accountDeletionService;
 
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal User user) {
@@ -69,10 +70,17 @@ public class UserController {
         return ResponseEntity.ok(userService.updateUser(id, request));
     }
 
+    /** Self-service account deletion: erases the caller's account and everything it owns. */
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteCurrentUser(@AuthenticationPrincipal User user) {
+        accountDeletionService.deleteAccount(user.getId());
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteUser(@PathVariable UUID id) {
-        userService.deleteUser(id);
+        accountDeletionService.deleteAccount(id);
         return ResponseEntity.noContent().build();
     }
 }

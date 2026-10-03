@@ -91,9 +91,4 @@ public class UserService {
         user.setPreferences(preferences);
         return UserResponse.from(userRepository.save(user));
     }
-
-    public void deleteUser(UUID id) {
-        User user = findUserByIdOrThrow(id);
-        userRepository.delete(user);
-    }
 }

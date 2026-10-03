@@ -32,6 +32,13 @@ public interface FileRepository extends JpaRepository<File, UUID> {
 
     List<File> findByParentId(UUID parentId);
 
+    // --- Account erasure ---
+
+    List<File> findByOwnerId(UUID ownerId);
+
+    @Query("SELECT f FROM File f JOIN f.sharedWith u WHERE u.id = :userId")
+    List<File> findAllSharedWithUser(@Param("userId") UUID userId);
+
     long countByOwnerIdAndIsDirectoryFalse(UUID ownerId);
 
     @Query("""
