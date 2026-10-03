@@ -5,6 +5,7 @@ import com.r16a.r16a_cloud.exception.ResourceNotFoundException;
 import com.r16a.r16a_cloud.exception.StorageException;
 import com.r16a.r16a_cloud.file.dto.*;
 import com.r16a.r16a_cloud.file.support.DownloadTokenService;
+import com.r16a.r16a_cloud.file.support.FileAccessPolicy;
 import com.r16a.r16a_cloud.file.support.FileZipService;
 import com.r16a.r16a_cloud.file.support.MediaDateExtractor;
 import com.r16a.r16a_cloud.file.support.ThumbnailService;
@@ -44,6 +45,7 @@ public class FileService {
     private final FileZipService fileZipService;
     private final MediaDateExtractor mediaDateExtractor;
     private final PhotoService photoService;
+    private final FileAccessPolicy fileAccessPolicy;
 
     @Value("${app.upload.path}")
     private String uploadRootPath;
@@ -60,24 +62,8 @@ public class FileService {
         }
     }
 
-    public FileResponse getFileById(UUID id) {
-        return FileResponse.from(findFileOrThrow(id));
-    }
-
-    public Page<FileResponse> getFiles(UUID ownerId, UUID parentId, Pageable pageable) {
-        if (!userRepository.existsById(ownerId)) {
-            throw new ResourceNotFoundException("User", "id", ownerId);
-        }
-
-        Page<File> files;
-        if (parentId != null) {
-            findFileOrThrow(parentId);
-            files = fileRepository.findByParentIdAndOwnerId(parentId, ownerId, pageable);
-        } else {
-            files = fileRepository.findByParentIsNullAndOwnerId(ownerId, pageable);
-        }
-
-        return files.map(FileResponse::from);
+    public FileResponse getFileById(UUID id, UUID requesterId) {
+        return FileResponse.from(fileAccessPolicy.requireReadable(id, requesterId));
     }
 
     public Page<FileResponse> getFilesSharedWithUser(UUID userId, Pageable pageable) {
@@ -88,7 +74,8 @@ public class FileService {
         return fileRepository.findFilesSharedWithUser(userId, pageable).map(FileResponse::from);
     }
 
-    public DashboardResponse getDashboard(UUID ownerId) {
+    public DashboardResponse getDashboard(UUID ownerId, UUID requesterId) {
+        FileAccessPolicy.requireSelf(ownerId, requesterId);
         if (!userRepository.existsById(ownerId)) {
             throw new ResourceNotFoundException("User", "id", ownerId);
         }
@@ -108,7 +95,8 @@ public class FileService {
     }
 
     @Transactional
-    public FileResponse createFile(CreateFileRequest request) {
+    public FileResponse createFile(CreateFileRequest request, UUID requesterId) {
+        FileAccessPolicy.requireSelf(request.ownerId(), requesterId);
         User owner = userRepository.findById(request.ownerId())
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", request.ownerId()));
 
@@ -147,8 +135,10 @@ public class FileService {
             MultipartFile upload,
             String description,
             Visibility visibility,
-            Set<UUID> sharedWithIds
+            Set<UUID> sharedWithIds,
+            UUID requesterId
     ) {
+        FileAccessPolicy.requireSelf(ownerId, requesterId);
         User owner = userRepository.findById(ownerId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", ownerId));
 
@@ -188,8 +178,8 @@ public class FileService {
     }
 
     @Transactional
-    public FileResponse updateFile(UUID id, UpdateFileRequest request) {
-        File file = findFileOrThrow(id);
+    public FileResponse updateFile(UUID id, UpdateFileRequest request, UUID requesterId) {
+        File file = fileAccessPolicy.requireOwned(id, requesterId);
         String targetName = request.name() != null ? request.name() : file.getName();
 
         File targetParent = file.getParent();
@@ -248,8 +238,8 @@ public class FileService {
     }
 
     @Transactional
-    public FileResponse updateFileSharing(UUID id, UpdateFileSharingRequest request) {
-        File file = findFileOrThrow(id);
+    public FileResponse updateFileSharing(UUID id, UpdateFileSharingRequest request, UUID requesterId) {
+        File file = fileAccessPolicy.requireOwned(id, requesterId);
         Set<User> sharedUsers = resolveUsers(request.sharedWithIds());
         file.setSharedWith(sharedUsers);
         applyVisibilityForSharing(file, sharedUsers);
@@ -261,8 +251,8 @@ public class FileService {
             @CacheEvict(value = "thumbnails", key = "#id + ':small'"),
             @CacheEvict(value = "thumbnails", key = "#id + ':medium'")
     })
-    public void deleteFile(UUID id) {
-        File file = findFileOrThrow(id);
+    public void deleteFile(UUID id, UUID requesterId) {
+        File file = fileAccessPolicy.requireOwned(id, requesterId);
         photoService.evictYearsCache(file.getOwner().getId());
         recordEvent(file, FileEventType.DELETED);
         deleteFsEntry(Path.of(file.getFsPath()));
@@ -270,8 +260,11 @@ public class FileService {
         deleteFromDbRecursively(file);
     }
 
-    public DownloadPayload downloadSingle(UUID id) {
-        File file = findFileOrThrow(id);
+    public DownloadPayload downloadSingle(UUID id, UUID requesterId) {
+        return buildDownloadPayload(fileAccessPolicy.requireReadable(id, requesterId));
+    }
+
+    private DownloadPayload buildDownloadPayload(File file) {
         if (!file.isDirectory()) {
             return buildSingleFilePayload(file);
         }
@@ -279,12 +272,14 @@ public class FileService {
         return new DownloadPayload(file.getName() + ".zip", "application/zip", fileZipService.zipFiles(List.of(file)), -1, null);
     }
 
-    public DownloadPayload downloadMultiple(List<UUID> ids) {
+    public DownloadPayload downloadMultiple(List<UUID> ids, UUID requesterId) {
         if (ids == null || ids.isEmpty()) {
             throw new StorageException("At least one file id is required for download.");
         }
 
-        List<File> files = ids.stream().map(this::findFileOrThrow).toList();
+        List<File> files = ids.stream()
+                .map(id -> fileAccessPolicy.requireReadable(id, requesterId))
+                .toList();
         if (files.size() == 1 && !files.get(0).isDirectory()) {
             return buildSingleFilePayload(files.get(0));
         }
@@ -553,13 +548,14 @@ public class FileService {
     // ── Download tokens ───────────────────────────────────────────────────────
 
     public String generateDownloadToken(UUID fileId, UUID requesterId) {
-        findFileOrThrow(fileId); // verify file exists
+        fileAccessPolicy.requireReadable(fileId, requesterId);
         return downloadTokenService.generateToken(fileId, requesterId);
     }
 
     public DownloadPayload downloadByToken(String token) {
-        UUID fileId = downloadTokenService.validateToken(token);
-        return downloadSingle(fileId);
+        // Re-checked so access revoked after the token was issued still applies.
+        DownloadTokenService.TokenClaims claims = downloadTokenService.validateToken(token);
+        return downloadSingle(claims.fileId(), claims.requesterId());
     }
 
     // ── File event changelog ──────────────────────────────────────────────────
@@ -581,7 +577,8 @@ public class FileService {
     }
 
     @Transactional(readOnly = true)
-    public FileEventsResponse getEventsSince(UUID ownerId, long sinceEpochMs, int limit) {
+    public FileEventsResponse getEventsSince(UUID ownerId, long sinceEpochMs, int limit, UUID requesterId) {
+        FileAccessPolicy.requireSelf(ownerId, requesterId);
         Instant since = Instant.ofEpochMilli(sinceEpochMs);
         Pageable p = PageRequest.of(0, Math.min(limit, 500));
         Slice<FileEvent> slice = fileEventRepository

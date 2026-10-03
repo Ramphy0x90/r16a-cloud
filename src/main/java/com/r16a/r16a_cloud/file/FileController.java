@@ -2,6 +2,7 @@ package com.r16a.r16a_cloud.file;
 
 import com.r16a.r16a_cloud.file.dto.*;
 import com.r16a.r16a_cloud.file.support.ChunkedUploadService;
+import com.r16a.r16a_cloud.file.support.FileAccessPolicy;
 import com.r16a.r16a_cloud.file.support.FileCursorService;
 import com.r16a.r16a_cloud.file.support.ThumbnailService;
 import com.r16a.r16a_cloud.user.User;
@@ -39,10 +40,14 @@ public class FileController {
     private final ThumbnailService thumbnailService;
     private final ChunkedUploadService chunkedUploadService;
     private final FileCursorService fileCursorService;
+    private final FileAccessPolicy fileAccessPolicy;
 
     @PostMapping
-    public ResponseEntity<FileResponse> createFile(@Valid @RequestBody CreateFileRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(fileService.createFile(request));
+    public ResponseEntity<FileResponse> createFile(
+            @Valid @RequestBody CreateFileRequest request,
+            @AuthenticationPrincipal User user
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(fileService.createFile(request, user.getId()));
     }
 
     @PostMapping("/upload/init")
@@ -99,16 +104,17 @@ public class FileController {
             @RequestParam("file") MultipartFile file,
             @RequestParam(required = false) String description,
             @RequestParam(required = false) Visibility visibility,
-            @RequestParam(required = false) Set<UUID> sharedWithIds
+            @RequestParam(required = false) Set<UUID> sharedWithIds,
+            @AuthenticationPrincipal User user
     ) {
         return ResponseEntity.status(HttpStatus.CREATED).body(
-                fileService.uploadFile(ownerId, parentId, file, description, visibility, sharedWithIds)
+                fileService.uploadFile(ownerId, parentId, file, description, visibility, sharedWithIds, user.getId())
         );
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<FileResponse> getFile(@PathVariable UUID id) {
-        return ResponseEntity.ok(fileService.getFileById(id));
+    public ResponseEntity<FileResponse> getFile(@PathVariable UUID id, @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(fileService.getFileById(id, user.getId()));
     }
 
     @GetMapping
@@ -119,8 +125,11 @@ public class FileController {
             @RequestParam(defaultValue = "asc") String dir,
             @RequestParam(defaultValue = "50") int limit,
             @RequestParam(required = false) String cursor,
+            @AuthenticationPrincipal User user,
             WebRequest webRequest
     ) {
+        // Before the ETag check: a 304 must not confirm another user's folder state.
+        FileAccessPolicy.requireSelf(ownerId, user.getId());
         String eTag = fileService.getFolderETag(ownerId, parentId);
         if (webRequest.checkNotModified(eTag)) {
             return ResponseEntity.status(HttpStatus.NOT_MODIFIED).build();
@@ -143,38 +152,44 @@ public class FileController {
     }
 
     @GetMapping("/dashboard")
-    public ResponseEntity<DashboardResponse> getDashboard(@RequestParam UUID ownerId) {
-        return ResponseEntity.ok(fileService.getDashboard(ownerId));
+    public ResponseEntity<DashboardResponse> getDashboard(
+            @RequestParam UUID ownerId,
+            @AuthenticationPrincipal User user
+    ) {
+        return ResponseEntity.ok(fileService.getDashboard(ownerId, user.getId()));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<FileResponse> updateFile(
             @PathVariable UUID id,
-            @Valid @RequestBody UpdateFileRequest request
+            @Valid @RequestBody UpdateFileRequest request,
+            @AuthenticationPrincipal User user
     ) {
-        return ResponseEntity.ok(fileService.updateFile(id, request));
+        return ResponseEntity.ok(fileService.updateFile(id, request, user.getId()));
     }
 
     @PatchMapping("/{id}/sharing")
     public ResponseEntity<FileResponse> updateFileSharing(
             @PathVariable UUID id,
-            @Valid @RequestBody UpdateFileSharingRequest request
+            @Valid @RequestBody UpdateFileSharingRequest request,
+            @AuthenticationPrincipal User user
     ) {
-        return ResponseEntity.ok(fileService.updateFileSharing(id, request));
+        return ResponseEntity.ok(fileService.updateFileSharing(id, request, user.getId()));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteFile(@PathVariable UUID id) {
-        fileService.deleteFile(id);
+    public ResponseEntity<Void> deleteFile(@PathVariable UUID id, @AuthenticationPrincipal User user) {
+        fileService.deleteFile(id, user.getId());
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/download")
     public ResponseEntity<StreamingResponseBody> downloadFile(
             @PathVariable UUID id,
-            @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader
+            @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader,
+            @AuthenticationPrincipal User user
     ) {
-        FileService.DownloadPayload payload = fileService.downloadSingle(id);
+        FileService.DownloadPayload payload = fileService.downloadSingle(id, user.getId());
         if (rangeHeader != null && payload.sourcePath() != null) {
             return buildRangeResponse(payload, rangeHeader);
         }
@@ -186,8 +201,11 @@ public class FileController {
     public ResponseEntity<byte[]> downloadThumbnail(
             @PathVariable UUID id,
             @RequestParam(defaultValue = "small") String size,
+            @AuthenticationPrincipal User user,
             WebRequest webRequest
     ) {
+        // Checked here, not in ThumbnailService: its result is cached per file, not per user.
+        fileAccessPolicy.requireReadable(id, user.getId());
         ThumbnailService.ThumbnailSize thumbnailSize = ThumbnailService.ThumbnailSize.fromQueryValue(size);
         ThumbnailService.ThumbnailPayload payload = thumbnailService.downloadThumbnail(id, thumbnailSize);
 
@@ -196,7 +214,7 @@ public class FileController {
         }
 
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable())
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePrivate().immutable())
                 .eTag(payload.eTag())
                 .lastModified(payload.lastModifiedEpochMs())
                 .contentType(MediaType.parseMediaType(payload.contentType()))
@@ -204,8 +222,11 @@ public class FileController {
     }
 
     @PostMapping("/download")
-    public ResponseEntity<StreamingResponseBody> downloadFiles(@Valid @RequestBody DownloadFilesRequest request) {
-        FileService.DownloadPayload payload = fileService.downloadMultiple(request.ids());
+    public ResponseEntity<StreamingResponseBody> downloadFiles(
+            @Valid @RequestBody DownloadFilesRequest request,
+            @AuthenticationPrincipal User user
+    ) {
+        FileService.DownloadPayload payload = fileService.downloadMultiple(request.ids(), user.getId());
         return buildDownloadResponse(payload);
     }
 
@@ -243,9 +264,10 @@ public class FileController {
     public ResponseEntity<FileEventsResponse> getEvents(
             @RequestParam UUID ownerId,
             @RequestParam(defaultValue = "0") long since,
-            @RequestParam(defaultValue = "100") int limit
+            @RequestParam(defaultValue = "100") int limit,
+            @AuthenticationPrincipal User user
     ) {
-        return ResponseEntity.ok(fileService.getEventsSince(ownerId, since, limit));
+        return ResponseEntity.ok(fileService.getEventsSince(ownerId, since, limit, user.getId()));
     }
 
     private ResponseEntity<StreamingResponseBody> buildDownloadResponse(FileService.DownloadPayload payload) {

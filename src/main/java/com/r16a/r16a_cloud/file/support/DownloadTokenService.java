@@ -19,8 +19,11 @@ public class DownloadTokenService {
 
     private final byte[] secret;
 
+    public record TokenClaims(UUID fileId, UUID requesterId) {
+    }
+
     public DownloadTokenService(
-            @Value("${app.download.token-secret:r16a-default-change-in-production}") String secret
+            @Value("${app.download.token-secret}") String secret
     ) {
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
     }
@@ -37,9 +40,9 @@ public class DownloadTokenService {
     }
 
     /**
-     * Validates the token and returns the {@code fileId} it was issued for.
+     * Validates the token and returns the file and requester it was issued for.
      */
-    public UUID validateToken(String token) {
+    public TokenClaims validateToken(String token) {
         String decoded;
 
         try {
@@ -67,7 +70,7 @@ public class DownloadTokenService {
         long expiresAt = Long.parseLong(parts[2]);
         if (Instant.now().getEpochSecond() > expiresAt) throw new StorageException("Download token expired");
 
-        return UUID.fromString(parts[0]);
+        return new TokenClaims(UUID.fromString(parts[0]), UUID.fromString(parts[1]));
     }
 
     private String sign(String data) {

@@ -8,6 +8,7 @@ services:
       DB_USERNAME: r16a
       DB_PASSWORD: r16a_password
       REDIS_HOST: redis
+      DOWNLOAD_TOKEN_SECRET: local-dev-only-download-token-secret
     volumes:
       - uploads:/app/uploads
     depends_on:

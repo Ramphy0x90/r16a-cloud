@@ -2,9 +2,12 @@ package com.r16a.r16a_cloud.photo;
 
 import com.r16a.r16a_cloud.file.dto.CursorPageResponse;
 import com.r16a.r16a_cloud.file.dto.FileResponse;
+import com.r16a.r16a_cloud.file.support.FileAccessPolicy;
 import com.r16a.r16a_cloud.photo.dto.PhotoYearSummary;
+import com.r16a.r16a_cloud.user.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,7 +21,11 @@ public class PhotoController {
     private final PhotoService photoService;
 
     @GetMapping("/years")
-    public ResponseEntity<List<PhotoYearSummary>> getPhotoYears(@RequestParam UUID ownerId) {
+    public ResponseEntity<List<PhotoYearSummary>> getPhotoYears(
+            @RequestParam UUID ownerId,
+            @AuthenticationPrincipal User user
+    ) {
+        FileAccessPolicy.requireSelf(ownerId, user.getId());
         return ResponseEntity.ok(photoService.getPhotoYears(ownerId));
     }
 
@@ -27,8 +34,10 @@ public class PhotoController {
             @RequestParam UUID ownerId,
             @RequestParam int year,
             @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "60") int limit
+            @RequestParam(defaultValue = "60") int limit,
+            @AuthenticationPrincipal User user
     ) {
+        FileAccessPolicy.requireSelf(ownerId, user.getId());
         return ResponseEntity.ok(photoService.getPhotos(ownerId, year, cursor, limit));
     }
 }

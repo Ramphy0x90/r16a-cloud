@@ -53,8 +53,8 @@ class FileServiceDashboardTests {
         when(fileRepository.findTop5ByOwnerIdAndIsDirectoryFalseOrderByUpdatedAtDesc(ownerId))
                 .thenReturn(List.of(recentA, recentB));
 
-        FileService service = new FileService(fileRepository, userRepository, null, null, null, null, null, null);
-        DashboardResponse response = service.getDashboard(ownerId);
+        FileService service = new FileService(fileRepository, userRepository, null, null, null, null, null, null, null);
+        DashboardResponse response = service.getDashboard(ownerId, ownerId);
 
         assertEquals(12L, response.metrics().uploadedFiles());
         assertEquals(2048L, response.metrics().usedStorageBytes());
@@ -71,9 +71,19 @@ class FileServiceDashboardTests {
         UUID ownerId = UUID.randomUUID();
         when(userRepository.existsById(ownerId)).thenReturn(false);
 
-        FileService service = new FileService(fileRepository, userRepository, null, null, null, null, null, null);
+        FileService service = new FileService(fileRepository, userRepository, null, null, null, null, null, null, null);
 
-        assertThrows(ResourceNotFoundException.class, () -> service.getDashboard(ownerId));
+        assertThrows(ResourceNotFoundException.class, () -> service.getDashboard(ownerId, ownerId));
         verifyNoInteractions(fileRepository);
+    }
+
+    @Test
+    void getDashboard_rejectsAnotherUsersOwnerId() {
+        UUID ownerId = UUID.randomUUID();
+
+        FileService service = new FileService(fileRepository, userRepository, null, null, null, null, null, null, null);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.getDashboard(ownerId, UUID.randomUUID()));
+        verifyNoInteractions(fileRepository, userRepository);
     }
 }
