@@ -30,10 +30,6 @@ public class UserPreferences {
     @Builder.Default
     private String preferredTheme = "light";
 
-    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
-    @Builder.Default
-    private boolean encryptFilesByDefault = false;
-
     @Column(nullable = false, columnDefinition = "VARCHAR(16) DEFAULT 'grid'")
     @Builder.Default
     private String defaultViewMode = "grid";

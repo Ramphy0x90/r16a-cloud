@@ -84,10 +84,6 @@ public class UserService {
             preferences.setPreferredTheme(request.preferences().preferredTheme().toLowerCase());
         }
 
-        if (request.preferences().encryptFilesByDefault() != null) {
-            preferences.setEncryptFilesByDefault(request.preferences().encryptFilesByDefault());
-        }
-
         if (request.preferences().defaultViewMode() != null) {
             preferences.setDefaultViewMode(request.preferences().defaultViewMode().toLowerCase());
         }
