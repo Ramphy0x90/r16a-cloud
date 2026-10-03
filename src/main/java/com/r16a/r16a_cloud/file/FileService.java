@@ -595,11 +595,17 @@ public class FileService {
         return new FileEventsResponse(events, nextCursor, slice.hasNext());
     }
 
+    /**
+     * Validator for a folder listing: changes whenever a child is added, removed (deleted or moved
+     * out) or updated. {@code max(updatedAt)} alone missed removals.
+     */
     public String getFolderETag(UUID ownerId, UUID parentId) {
-        Instant maxUpdatedAt = parentId != null
-                ? fileRepository.findMaxUpdatedAtByOwnerIdAndParentId(ownerId, parentId).orElse(Instant.EPOCH)
-                : fileRepository.findMaxUpdatedAtByOwnerIdAndParentIsNull(ownerId).orElse(Instant.EPOCH);
-        return "\"" + ownerId + ":" + (parentId != null ? parentId : "root") + ":" + maxUpdatedAt.toEpochMilli() + "\"";
+        FolderVersion version = parentId != null
+                ? fileRepository.findFolderVersion(ownerId, parentId)
+                : fileRepository.findRootFolderVersion(ownerId);
+        Instant maxUpdatedAt = version.maxUpdatedAt() != null ? version.maxUpdatedAt() : Instant.EPOCH;
+        return "\"" + ownerId + ":" + (parentId != null ? parentId : "root") + ":"
+                + version.childCount() + ":" + maxUpdatedAt.toEpochMilli() + "\"";
     }
 
     /**

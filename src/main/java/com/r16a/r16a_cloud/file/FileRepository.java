@@ -85,13 +85,19 @@ public interface FileRepository extends JpaRepository<File, UUID> {
 
     Slice<File> findSliceByParentIsNullAndOwnerId(UUID ownerId, Pageable pageable);
 
-    // --- ETag: max updatedAt for conditional GET on folder listings ---
+    // --- ETag: child count + max updatedAt for conditional GET on folder listings ---
 
-    @Query("SELECT MAX(f.updatedAt) FROM File f WHERE f.owner.id = :ownerId AND f.parent.id = :parentId")
-    Optional<Instant> findMaxUpdatedAtByOwnerIdAndParentId(@Param("ownerId") UUID ownerId, @Param("parentId") UUID parentId);
+    @Query("""
+            SELECT new com.r16a.r16a_cloud.file.FolderVersion(COUNT(f), MAX(f.updatedAt))
+            FROM File f WHERE f.owner.id = :ownerId AND f.parent.id = :parentId
+            """)
+    FolderVersion findFolderVersion(@Param("ownerId") UUID ownerId, @Param("parentId") UUID parentId);
 
-    @Query("SELECT MAX(f.updatedAt) FROM File f WHERE f.owner.id = :ownerId AND f.parent IS NULL")
-    Optional<Instant> findMaxUpdatedAtByOwnerIdAndParentIsNull(@Param("ownerId") UUID ownerId);
+    @Query("""
+            SELECT new com.r16a.r16a_cloud.file.FolderVersion(COUNT(f), MAX(f.updatedAt))
+            FROM File f WHERE f.owner.id = :ownerId AND f.parent IS NULL
+            """)
+    FolderVersion findRootFolderVersion(@Param("ownerId") UUID ownerId);
 
     // ── takenAt backfill ──────────────────────────────────────────────────────
 
