@@ -72,8 +72,9 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOriginPatterns(List.of(
-                "http://localhost:4200",
+                "https://domovoi.cloud",
                 "https://cloud.r16a.cloud",
+                "http://localhost:4200",
                 "https://192.168.*.*:*"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
